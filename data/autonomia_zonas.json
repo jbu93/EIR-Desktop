@@ -1,10 +1,8 @@
 {
   "_meta": {
     "version": 1,
-    "decision": "D048",
-    "mision": "M-027-frontera-autonomia",
     "actualizado": "2026-07-31",
-    "proposito": "Frontera de autonomía de EIR DR. como DATA versionada. Declara, por herramienta, en qué ZONA opera y qué EFECTO tiene. core/autonomia.py decide con esto; no hay lógica escondida en el código.",
+    "proposito": "Frontera de autonomía de EIR Desktop como DATA versionada. Declara, por herramienta, en qué ZONA opera y qué EFECTO tiene. core/autonomia.py decide con esto; no hay lógica escondida en el código.",
     "ley": "Fail-closed: toda herramienta NO declarada aquí queda NEGADA en modo autónomo. Añadir una herramienta al sistema obliga a declararla aquí.",
     "vocabulario": {
       "zona": {
@@ -25,7 +23,7 @@
       "zona": "administrativa",
       "efecto": "lectura",
       "requiere_humano": false,
-      "descripcion": "Consulta el directorio de profesionales."
+      "descripcion": "Stub en EIR Desktop. La consulta del directorio de profesionales requiere suscripción EIR DR. (https://eirdr.com)."
     },
     "ver_protocolo": {
       "zona": "clinica",
@@ -37,25 +35,25 @@
       "zona": "administrativa",
       "efecto": "lectura",
       "requiere_humano": false,
-      "descripcion": "Telemetría de estado del sistema."
+      "descripcion": "Stub en EIR Desktop. La telemetría de estado del sistema requiere suscripción EIR DR. (https://eirdr.com)."
     },
     "info_cad_protesis": {
       "zona": "clinica",
       "efecto": "lectura",
       "requiere_humano": false,
-      "descripcion": "Información de CAD/prótesis. Informativa, no prescriptiva."
+      "descripcion": "Stub en EIR Desktop. La información de CAD/prótesis requiere suscripción EIR DR. (https://eirdr.com). Informativa, no prescriptiva."
     },
     "buscar_evidencia_cientifica": {
       "zona": "investigacion",
       "efecto": "lectura",
       "requiere_humano": false,
-      "descripcion": "PubMed / Europe PMC. Zona segura para operación autónoma."
+      "descripcion": "Stub en EIR Desktop. La búsqueda en vivo de evidencia (PubMed/Europe PMC) requiere suscripción EIR DR. (https://eirdr.com)."
     },
     "buscar_normativa_salud": {
       "zona": "administrativa",
       "efecto": "lectura",
       "requiere_humano": false,
-      "descripcion": "Fuentes oficiales .gov.co. Solo lee y cita."
+      "descripcion": "Stub en EIR Desktop. La consulta de normativa de salud (.gov.co) requiere suscripción EIR DR. (https://eirdr.com)."
     },
     "leer_stl_local": {
       "zona": "clinica",
