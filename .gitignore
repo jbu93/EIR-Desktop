@@ -1,0 +1,28 @@
+# Build artefacts
+build/
+dist/
+*.exe
+*.msi
+*.app
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+
+# Entorno y secrets (BYOK del doctor durante PoC)
+.env
+
+# Sandbox runtime local
+logs/
+*.log
+
+# Frontend build tooling (Tailwind vendorizado): node_modules no se versiona,
+# el CSS ya compilado en static_desktop/vendor/ SI se versiona.
+build_frontend/node_modules/
+build_frontend/*.css
+!build_frontend/input.css

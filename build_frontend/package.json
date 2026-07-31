@@ -1,0 +1,12 @@
+{
+  "name": "eir-desktop-frontend-build",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Build-only: compila Tailwind CSS estatico para eir_desktop_v1. No es parte de la app en runtime.",
+  "scripts": {
+    "build": "tailwindcss -c tailwind.config.js -i input.css -o ../static_desktop/vendor/tailwind_desktop.css --minify"
+  },
+  "devDependencies": {
+    "tailwindcss": "^3.4.13"
+  }
+}

@@ -1,0 +1,111 @@
+/* desktop_organic.css — Extras del tema "Organic Professional" (Stitch)
+ * que Tailwind no cubre por defecto (o que se resuelven mejor con CSS
+ * plano para no depender de purge/scan de clases dinámicas por JS).
+ * Autocontenido: cero referencias a /static/ del proyecto principal.
+ */
+
+.material-symbols-outlined {
+  font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+}
+.fill-icon { font-variation-settings: 'FILL' 1; }
+
+/* Scrollbar técnico y discreto */
+::-webkit-scrollbar { width: 5px; }
+::-webkit-scrollbar-track { background: #f4f4ee; }
+::-webkit-scrollbar-thumb { background: #2d5a27; border-radius: 3px; }
+
+.glass-panel {
+  background: rgba(250, 250, 244, 0.75);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.organic-shadow {
+  box-shadow: 0 4px 20px -4px rgba(45, 90, 39, 0.08), 0 2px 8px -2px rgba(45, 90, 39, 0.04);
+}
+.organic-shadow-lg {
+  box-shadow: 0 10px 40px -10px rgba(45, 90, 39, 0.12), 0 4px 15px -4px rgba(45, 90, 39, 0.06);
+}
+.soft-shadow { box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.05); }
+
+.agent-trace-gradient {
+  background: linear-gradient(180deg, rgba(45, 90, 39, 0.03) 0%, rgba(45, 90, 39, 0.08) 100%);
+}
+
+.thought-stream::-webkit-scrollbar { width: 2px; }
+.thought-stream::-webkit-scrollbar-thumb { background: #3b6934; }
+
+.agent-pulse { animation: pulse-ring 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+@keyframes pulse-ring { 0%, 100% { opacity: 1; } 50% { opacity: .5; } }
+
+/* ─── Mode switcher (Chat | Cowork | Automatizaciones) ─── */
+.mode-btn { color: #42493e; background: transparent; }
+.mode-btn:hover { color: #154212; }
+.mode-btn.active { background: #154212; color: #ffffff; }
+
+/* ─── Selector de rol (píldoras) ─── */
+.role-btn { color: #42493e; background: transparent; }
+.role-btn:hover { background: #e8e8e3; }
+.role-btn.active {
+  background: #154212;
+  color: #ffffff;
+  box-shadow: 0 0 0 4px rgba(21, 66, 18, 0.10);
+}
+
+/* ─── Burbujas de chat (inyectadas por JS) ─── */
+.msg-row { display: flex; flex-direction: column; gap: 0.5rem; animation: msg-in .35s ease; }
+@keyframes msg-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.msg-row.usuario { align-items: flex-end; }
+.msg-row.eir { align-items: flex-start; }
+.msg-bubble {
+  max-width: 85%;
+  padding: 1rem 1.25rem;
+  border-radius: 1.25rem;
+  line-height: 1.55;
+  font-size: 15px;
+}
+.msg-row.usuario .msg-bubble {
+  background: #2d5a27;
+  color: #ffffff;
+  border-top-right-radius: 4px;
+}
+.msg-row.eir .msg-bubble {
+  background: #eeeee9;
+  border: 1px solid #c2c9bb;
+  color: #1a1c19;
+  border-top-left-radius: 4px;
+}
+.msg-row.eir.error .msg-bubble {
+  background: #ffdad6;
+  border-color: #ba1a1a;
+  color: #93000a;
+}
+.msg-resumen { font-size: 13px; color: #42493e; margin-top: 6px; white-space: pre-wrap; }
+
+/* ─── Pasos dentro de la traza ─── */
+.paso-item { display: flex; align-items: flex-start; gap: 12px; padding: 8px 0; }
+.paso-dot { margin-top: 4px; font-size: 10px; }
+.paso-dot.ok { color: #154212; }
+.paso-dot.err { color: #ba1a1a; }
+.paso-nombre { font-weight: 700; font-size: 13px; color: #1a1c19; }
+.paso-detalle { font-size: 12px; color: #42493e; margin-top: 2px; }
+
+/* ─── Estado de conexión (dot pulsante) ─── */
+.status-dot { animation: status-pulse 2s ease-in-out infinite; }
+.status-dot.online { background: #154212 !important; }
+.status-dot.offline { background: #ba1a1a !important; }
+@keyframes status-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
+
+/* Historial sidebar */
+.history-item {
+  display: flex; flex-direction: column; gap: 4px;
+  padding: 10px 12px; border-radius: 12px; cursor: pointer;
+  border: 1px solid transparent; transition: all .15s;
+  width: 100%; text-align: left; background: transparent;
+}
+.history-item:hover { background: #e8e8e3; }
+.history-item.active { background: #e3e3de; border-color: rgba(21,66,18,0.15); }
+.history-item .h-title { font-size: 13px; font-weight: 700; color: #1a1c19; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.history-item .h-meta { display: flex; align-items: center; gap: 6px; }
+.history-item .h-role { font-size: 9px; font-weight: 800; letter-spacing: .05em; padding: 2px 6px; border-radius: 4px; background: #154212; color: #fff; }
+.history-item .h-time { font-size: 9px; color: #42493e; opacity: .7; }

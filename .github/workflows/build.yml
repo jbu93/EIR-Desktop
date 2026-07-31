@@ -1,0 +1,47 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+
+jobs:
+  verify-and-build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: Run agent harness (15 properties)
+        shell: bash
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: python scripts/smoke_agente_local.py
+
+      - name: Build executable
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: python -m PyInstaller build_desktop.spec --clean --noconfirm
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: EIR_DR_Desktop
+          path: dist/EIR_DR_Desktop.exe
+
+      - name: Release (on tags)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/EIR_DR_Desktop.exe
+          fail_on_unmatched_files: true

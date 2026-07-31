@@ -1,0 +1,26 @@
+# requirements.txt · EIR Desktop v1 sandbox (subconjunto reducido).
+#
+# Excluido deliberadamente (cloud-only, no necesario en el cliente):
+#   pinecone, google-genai, google-generativeai, anthropic
+#
+# La cadena Groq->NVIDIA->Google NO se usa en el cliente (decision del
+# Soberano: inferencia cerrada estilo Anthropic Desktop). El mock en
+# core_desktop/cliente_llm.py documenta el contrato JSON del gateway
+# cloud de eirdr.com/api/v1/inference (futuro).
+
+Flask>=3.1.0
+numpy>=1.26.0
+numpy-stl>=4.0.0
+pywebview>=6.0
+pydantic>=2.0
+
+# Dependencias necesarias si el sandbox se conecta a core/ del proyecto
+# principal para validar el loop agentico real (no son instaladas por
+# el sandbox; se asume presentes en el entorno del proyecto padre).
+# Para reusar core/agente_loop.py + core/autonomia.py + core/shell_tools.py
+# el proyecto principal ya las provee:
+#   pydantic, python-dotenv, requests, tomli
+
+# Para probe yolos con + empaquetado real (NO se ejecuta PyInstaller en
+# este sandbox - decision del Soberano):
+#   pyinstaller>=6.0

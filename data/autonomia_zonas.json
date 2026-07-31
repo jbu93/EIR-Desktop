@@ -1,0 +1,79 @@
+{
+  "_meta": {
+    "version": 1,
+    "decision": "D048",
+    "mision": "M-027-frontera-autonomia",
+    "actualizado": "2026-07-31",
+    "proposito": "Frontera de autonomía de EIR DR. como DATA versionada. Declara, por herramienta, en qué ZONA opera y qué EFECTO tiene. core/autonomia.py decide con esto; no hay lógica escondida en el código.",
+    "ley": "Fail-closed: toda herramienta NO declarada aquí queda NEGADA en modo autónomo. Añadir una herramienta al sistema obliga a declararla aquí.",
+    "vocabulario": {
+      "zona": {
+        "clinica": "Toca PHI, historia clínica, diagnóstico o firma. Autonomía total aquí no es avance: es ilegal.",
+        "investigacion": "Literatura, corpus, evidencia. Sin PHI, sin efectos irreversibles, todo auditable contra fuente.",
+        "administrativa": "RIPS, agenda, tarifas, directorio. Reversible pero con efecto económico/legal."
+      },
+      "efecto": {
+        "lectura": "No modifica estado. Consulta y devuelve.",
+        "escritura_reversible": "Modifica estado que puede deshacerse sin daño.",
+        "escritura_irreversible": "Sella, firma, envía o borra. No se deshace."
+      },
+      "requiere_humano": "Override explícito: true niega en modo autónomo aunque la matriz lo permitiera."
+    }
+  },
+  "herramientas": {
+    "buscar_doctor": {
+      "zona": "administrativa",
+      "efecto": "lectura",
+      "requiere_humano": false,
+      "descripcion": "Consulta el directorio de profesionales."
+    },
+    "ver_protocolo": {
+      "zona": "clinica",
+      "efecto": "lectura",
+      "requiere_humano": false,
+      "descripcion": "Devuelve un protocolo clínico del catálogo curado. Solo lee."
+    },
+    "pulso_ecosistema": {
+      "zona": "administrativa",
+      "efecto": "lectura",
+      "requiere_humano": false,
+      "descripcion": "Telemetría de estado del sistema."
+    },
+    "info_cad_protesis": {
+      "zona": "clinica",
+      "efecto": "lectura",
+      "requiere_humano": false,
+      "descripcion": "Información de CAD/prótesis. Informativa, no prescriptiva."
+    },
+    "buscar_evidencia_cientifica": {
+      "zona": "investigacion",
+      "efecto": "lectura",
+      "requiere_humano": false,
+      "descripcion": "PubMed / Europe PMC. Zona segura para operación autónoma."
+    },
+    "buscar_normativa_salud": {
+      "zona": "administrativa",
+      "efecto": "lectura",
+      "requiere_humano": false,
+      "descripcion": "Fuentes oficiales .gov.co. Solo lee y cita."
+    },
+    "leer_stl_local": {
+      "zona": "clinica",
+      "efecto": "lectura",
+      "requiere_humano": false,
+      "descripcion": "Lee metadatos de un STL local (vertices, bbox, volumen, nombre) sin subirlo a la nube. No interpreta geometria clinica. EIR Desktop Fase 2."
+    },
+    "listar_archivos_paciente": {
+      "zona": "clinica",
+      "efecto": "lectura",
+      "requiere_humano": false,
+      "descripcion": "Lista archivos .stl/.dcm/.pdf de una carpeta local que el doctor senala. Sin subir nada a la nube. EIR Desktop Fase 2."
+    },
+    "leer_texto_local": {
+      "zona": "clinica",
+      "efecto": "lectura",
+      "requiere_humano": false,
+      "descripcion": "Lee un .txt plano local para dar contexto adicional al agente. Tope 256 KB. No lee PDF. EIR Desktop Fase 2."
+    }
+  }
+}
