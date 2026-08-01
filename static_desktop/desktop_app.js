@@ -23,6 +23,7 @@
     historyByRole: { odontologo: [], recepcion: [], laboratorio: [], marketing: [] },
     conversations: [], // {id, role, title, timestamp}
     connection: 'checking',
+    sesion: { autenticado: false }, // reflejo de /api/sesion (el token vive en el proceso Python)
   };
 
   const el = (id) => document.getElementById(id);
@@ -52,6 +53,22 @@
     clearHistoryBtn: el('clear-history-btn'),
     footerRoleLabel: el('footer-role-label'),
     settingsBtn: el('settings-btn'),
+    sessionLoggedOut: el('session-logged-out'),
+    sessionLoggedIn: el('session-logged-in'),
+    sessionUser: el('session-user'),
+    sessionCredito: el('session-credito'),
+    sessionLoginBtn: el('session-login-btn'),
+    sessionLogoutBtn: el('session-logout-btn'),
+    loginModal: el('login-modal'),
+    loginForm: el('login-form'),
+    loginEmail: el('login-email'),
+    loginPassword: el('login-password'),
+    loginError: el('login-error'),
+    loginSubmitBtn: el('login-submit-btn'),
+    loginCancelBtn: el('login-cancel-btn'),
+    updateBanner: el('update-banner'),
+    updateText: el('update-text'),
+    updateLink: el('update-link'),
   };
 
   // ─── Arranque ───
@@ -63,6 +80,8 @@
     renderMessagesForRole();
     checkConnection();
     setInterval(checkConnection, 20000);
+    cargarSesion();
+    cargarVersion();
   }
 
   function bindEvents() {
@@ -105,6 +124,11 @@
     els.settingsBtn.addEventListener('click', () => {
       addSystemNote('Configuración: disponible próximamente. Hoy no hay ajustes que tocar en el sandbox.');
     });
+
+    els.sessionLoginBtn.addEventListener('click', abrirLogin);
+    els.loginCancelBtn.addEventListener('click', cerrarLogin);
+    els.loginForm.addEventListener('submit', enviarLogin);
+    els.sessionLogoutBtn.addEventListener('click', logout);
   }
 
   function autoGrow(textarea) {
@@ -289,6 +313,10 @@
       else pintarLabEntry('eir', texto, true);
       state.historyByRole[rol].push({ rol: 'eir', texto, error: true });
     } else {
+      if (resultado.credito_restante_hoy !== undefined) {
+        state.sesion.credito_hoy = resultado.credito_restante_hoy;
+        pintarSesion(state.sesion);
+      }
       const texto = resultado.resumen || '(sin resumen; motivo_fin: ' + (resultado.motivo_fin || 'desconocido') + ')';
       if (destino === 'chat') {
         pintarBurbuja('eir', texto);
@@ -399,6 +427,95 @@
       if (data.conversations) state.conversations = data.conversations;
       if (data.historyByRole) state.historyByRole = Object.assign(state.historyByRole, data.historyByRole);
     } catch (e) { /* datos corruptos: se ignora y se arranca limpio */ }
+  }
+
+  // ─── Sesión cloud EIR (M-052) — el token nunca toca este webview ───
+  function pintarSesion(s) {
+    const ok = s && s.autenticado === true;
+    els.sessionLoggedOut.hidden = ok;
+    els.sessionLoggedIn.hidden = !ok;
+    if (ok) {
+      els.sessionUser.textContent = (s.nombre || s.email || 'Sesión EIR DR.');
+      els.sessionCredito.textContent = s.credito_hoy !== undefined
+        ? 'Crédito restante hoy: ' + s.credito_hoy
+        : (s.tier ? 'Cuenta: ' + s.tier : 'Cuenta EIR DR.');
+    } else {
+      els.sessionUser.textContent = '—';
+      els.sessionCredito.textContent = '';
+    }
+  }
+
+  async function cargarSesion() {
+    try {
+      const resp = await fetch('/api/sesion', { cache: 'no-cache' });
+      const data = await resp.json().catch(() => ({}));
+      state.sesion = data || { autenticado: false };
+    } catch (e) {
+      state.sesion = { autenticado: false };
+    }
+    pintarSesion(state.sesion);
+  }
+
+  function abrirLogin() {
+    els.loginError.hidden = true;
+    els.loginModal.classList.remove('hidden');
+    els.loginModal.classList.add('flex');
+    els.loginEmail.focus();
+  }
+
+  function cerrarLogin() {
+    els.loginModal.classList.add('hidden');
+    els.loginModal.classList.remove('flex');
+  }
+
+  async function enviarLogin(e) {
+    e.preventDefault();
+    els.loginError.hidden = true;
+    els.loginSubmitBtn.disabled = true;
+    try {
+      const resp = await fetch('/api/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: els.loginEmail.value.trim(), password: els.loginPassword.value }),
+      });
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok || !data.ok) {
+        els.loginError.textContent = data.error || 'No se pudo iniciar sesión';
+        els.loginError.hidden = false;
+      } else {
+        els.loginPassword.value = '';
+        cerrarLogin();
+        await cargarSesion();
+      }
+    } catch (err) {
+      els.loginError.textContent = 'Backend local no disponible';
+      els.loginError.hidden = false;
+    } finally {
+      els.loginSubmitBtn.disabled = false;
+    }
+  }
+
+  async function logout() {
+    try { await fetch('/api/logout', { method: 'POST' }); } catch (e) { /* local */ }
+    state.sesion = { autenticado: false };
+    await cargarSesion();
+  }
+
+  // ─── Señal de versión / auto-update (M-052) ───
+  async function cargarVersion() {
+    try {
+      const resp = await fetch('/api/version', { cache: 'no-cache' });
+      const v = await resp.json().catch(() => ({}));
+      if (v && v.ok && v.hay_actualizacion) {
+        els.updateText.textContent = 'Nueva versión · v' + v.disponible + ' (tienes v' + v.actual + ')';
+        els.updateLink.href = v.url_windows || '#';
+        els.updateBanner.hidden = false;
+      } else {
+        els.updateBanner.hidden = true;
+      }
+    } catch (e) {
+      els.updateBanner.hidden = true;
+    }
   }
 
   // ─── Estado de conexión (honesto, sin inventar "Pro"/tiers) ───

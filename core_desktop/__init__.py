@@ -8,6 +8,9 @@ Modulos:
   - cliente_llm   · mock 100% offline que documenta el contrato JSON
                     esperado de ``eirdr.com/api/v1/inference`` (estilo Anthropic
                     Desktop: el cerebro vive en la nube, el cliente no ve claves).
+  - cliente_cloud · adapter REAL al gateway eirdr.com/api/v1/inference (M-052)
+  - sesion        · token de sesión EIR DR. local (~/.eir_dr/sesion.json)
+  - actualizador  · señal de versión / auto-update (M-052)
   - runner_*      · 4 envoltorios por rol clinico (odontologo, recepcion,
                     laboratorio, marketing). Cada uno inyecta su system_prompt
                     y su set de ejecutores (tools locales) en
@@ -17,5 +20,7 @@ Modulos:
 
 Principio no negociable (AGENTS.md §1, doc 02-arquitectura):
   estos modulos IMPORTAN ``core.agente_loop`` y ``core.autonomia`` pero
-  NUNCA los editan. El proyecto principal sigue intacto y en produccion.
+   NUNCA los editan. El proyecto principal sigue intacto y en produccion.
 """
+
+__version__ = "1.0.0"

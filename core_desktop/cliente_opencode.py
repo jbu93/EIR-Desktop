@@ -34,13 +34,22 @@ def _switch_activo() -> bool:
     return os.getenv("EIR_OPENCODE_ENABLED", "0").strip() in ("1", "true", "True", "yes")
 
 
-def resolver_cliente(rol: str = "odontologo"):
-    """Devuelve el cliente LLM adecuado según el kill-switch.
+def _cloud_switch_activo() -> bool:
+    return os.getenv("EIR_CLOUD_INFERENCE", "0").strip() in ("1", "true", "True", "yes")
 
-    Con EIR_OPENCODE_ENABLED apagado (default) → ClienteMockSandbox (offline).
-    Con EIR_OPENCODE_ENABLED encendido → ClienteOpencode (BYOK local).
+
+def resolver_cliente(rol: str = "odontologo"):
+    """Devuelve el cliente LLM adecuado según los kill-switches (L10).
+
+    1. EIR_CLOUD_INFERENCE=1   → ClienteEirCloud (gateway eirdr.com, M-052).
+       Sin sesión guardada → el cliente responde "inicia sesión" (L2/L5).
+    2. EIR_OPENCODE_ENABLED=1  → ClienteOpencode (BYOK local, M-051).
+    3. Default (ambos apagados) → ClienteMockSandbox (offline).
     Llamada en tiempo de ejecución (no a nivel de módulo) — cumple L10.
     """
+    if _cloud_switch_activo():
+        from core_desktop.cliente_cloud import ClienteEirCloud
+        return ClienteEirCloud(rol=rol)
     if not _switch_activo():
         from core_desktop.cliente_llm import ClienteMockSandbox
         return ClienteMockSandbox(rol=rol)

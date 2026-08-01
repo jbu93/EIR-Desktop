@@ -1,0 +1,18 @@
+{
+  "_meta": {
+    "version": 1,
+    "decision": "D074",
+    "fase": "B2",
+    "actualizado": "2026-07-31",
+    "proposito": "Plantillas parametrizadas del rol 360° (D074 B2). Cada envío resuelve TODOS los placeholders desde la agenda real del consultorio; el render se niega si queda un hueco (L4). La personalización {mensaje_libre} + {nombre}/{fecha}/{hora} garantiza que nunca salen dos mensajes idénticos (patrón anti-baneo).",
+    "anti_baneo": "Texto idéntico repetido a muchos números es el detonante de quejas y bloqueos. Estas plantillas son la base: siempre parametrizadas, nunca literales duplicadas.",
+    "nota_clinica": "Son recordatorios OPERATIVOS de agenda, no contenido clínico. EIR no inventa diagnósticos ni indicaciones (L4)."
+  },
+  "plantillas": {
+    "bienvenida": "Hola {nombre}, soy {doctor} de {consultorio}. Le escribo para darle la bienvenida. {mensaje_libre}",
+    "recordatorio_cita_24h": "Hola {nombre}, le recuerdo que tiene cita mañana {fecha} a las {hora} en {consultorio}. {mensaje_libre}",
+    "recordatorio_cita_3h": "Hola {nombre}, su cita de hoy es a las {hora} en {consultorio}. {mensaje_libre}",
+    "agendamiento": "Hola {nombre}, quedó agendada su cita para {fecha} a las {hora} en {consultorio}. {mensaje_libre}",
+    "horarios": "Hola {nombre}, nuestro horario de atención es {horario}. {mensaje_libre}"
+  }
+}

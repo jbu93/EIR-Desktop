@@ -53,6 +53,25 @@
           <span class="w-2 h-2 rounded-full bg-error status-dot" id="status-dot" aria-hidden="true"></span>
           <span class="font-label-caps text-[10px] text-on-surface-variant tracking-wide" id="status-text">Verificando conexión…</span>
         </div>
+
+        <!-- M-052 · sesión cloud EIR (inferencia) + señal de versión -->
+        <div id="session-box" class="flex flex-col gap-2">
+          <div id="session-logged-out" class="flex flex-col gap-1.5">
+            <button type="button" id="session-login-btn" class="w-full bg-primary text-on-primary text-[12px] font-bold px-3 py-2 rounded-lg hover:opacity-90 transition-opacity">
+              Iniciar sesión · inferencia cloud
+            </button>
+          </div>
+          <div id="session-logged-in" class="flex flex-col gap-1.5" hidden>
+            <p class="text-[11px] text-on-surface font-bold truncate" id="session-user">—</p>
+            <p class="text-[10px] text-on-surface-variant" id="session-credito"></p>
+            <button type="button" id="session-logout-btn" class="text-[11px] text-on-surface-variant hover:text-error text-left transition-colors">Cerrar sesión</button>
+          </div>
+          <div id="update-banner" class="rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 flex items-center justify-between gap-2" hidden>
+            <span class="font-label-caps text-[10px] text-primary font-bold" id="update-text"></span>
+            <a id="update-link" href="#" target="_blank" rel="noopener" class="font-label-caps text-[10px] text-primary underline shrink-0">Descargar</a>
+          </div>
+        </div>
+
         <p class="text-[11px] text-on-surface-variant opacity-70 leading-snug">
           Modo local-first: si el backend cae, EIR sigue mostrando la sesión guardada. Ningún dato de paciente sale sin pasar por la frontera de anonimización.
         </p>
@@ -232,6 +251,29 @@
       <span class="font-label-caps text-[10px] text-on-surface-variant opacity-60">NÚCLEO: LOCAL + CLOUD EIR</span>
     </div>
   </footer>
+
+  <!-- M-052 · Modal de sesión cloud EIR DR. -->
+  <div id="login-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/50" aria-hidden="true">
+    <div class="bg-surface-container-lowest border border-outline-variant rounded-2xl p-6 w-[340px] soft-shadow">
+      <h3 class="text-headline-sm font-bold text-on-surface mb-1">Iniciar sesión en EIR DR.</h3>
+      <p class="text-[12px] text-on-surface-variant mb-4 leading-snug">Con tu cuenta de eirdr.com activas la inferencia cloud. Tu contraseña se envía cifrada por HTTPS y nunca se guarda en este equipo.</p>
+      <form id="login-form" class="flex flex-col gap-3">
+        <input id="login-email" type="email" required autocomplete="email" placeholder="Correo electrónico"
+               class="w-full border border-outline-variant rounded-lg px-3 py-2 text-body-sm outline-none focus:border-primary">
+        <input id="login-password" type="password" required autocomplete="current-password" placeholder="Contraseña"
+               class="w-full border border-outline-variant rounded-lg px-3 py-2 text-body-sm outline-none focus:border-primary">
+        <p id="login-error" class="text-[12px] text-error font-bold" hidden></p>
+        <div class="flex gap-2">
+          <button type="submit" id="login-submit-btn" class="flex-1 bg-primary text-on-primary text-[12px] font-bold px-3 py-2.5 rounded-lg hover:opacity-90 transition-opacity">Entrar</button>
+          <button type="button" id="login-cancel-btn" class="flex-1 bg-surface-container text-on-surface-variant text-[12px] font-bold px-3 py-2.5 rounded-lg hover:opacity-80 transition-opacity">Cancelar</button>
+        </div>
+      </form>
+      <a href="https://eirdr.com/atelier" target="_blank" rel="noopener"
+         class="block text-center text-[11px] text-primary underline mt-3">
+        ¿No tienes cuenta? Crea una en eirdr.com
+      </a>
+    </div>
+  </div>
 
   <!-- Visor 3D STL (three.js vendored, module) — expone window.EIR_STL_VIEWER para desktop_app.js -->
   <script type="module">

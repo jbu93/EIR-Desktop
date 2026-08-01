@@ -379,6 +379,223 @@ def _verificar_p14_workflow_leer_stl_real() -> tuple[bool, str]:
         return False, f"excepcion: {exc!r}\n{traceback.format_exc()[:500]}"
 
 
+# ─── FASE B1: control de apps de escritorio (D074) ─────────────────────
+
+def _verificar_p15_apps_declaradas() -> tuple[bool, str]:
+    """P15: zona 'producto' con el override correcto — lectura/reversible pasan
+    el pre-hook; las irreversibles (escribir/enviar) quedan BLOQUEADAS por
+    requiere_humano aunque estén declaradas (D074: jamás autónomas)."""
+    try:
+        from core_desktop.agent_hooks import run_pre_hooks
+        no_irreversibles = ("listar_apps_abiertas", "traer_al_frente",
+                            "capturar_pantalla_app", "listar_plantillas",
+                            "render_plantilla")
+        irreversibles = ("escribir_texto_en", "enviar_whatsapp_business")
+        bloqueadas = []
+        for t in no_irreversibles:
+            pre = run_pre_hooks("odontologo", {"herramienta": t}, {"rol": "odontologo"})
+            if not pre.get("permitido"):
+                bloqueadas.append(f"{t}:{pre.get('motivo')}")
+        if bloqueadas:
+            return False, f"FAIL: tools de lectura/reversible BLOQUEADAS: {', '.join(bloqueadas)}"
+        for t in irreversibles:
+            pre = run_pre_hooks("odontologo", {"herramienta": t}, {"rol": "odontologo"})
+            if pre.get("permitido"):
+                return False, f"FAIL: {t} (irreversible) pasó el pre-hook autónomo (requiere_humano roto)"
+            motivo = str(pre.get("motivo") or "")
+            if "humano" not in motivo:
+                return False, f"FAIL: {t} bloqueada pero sin motivo de requiere_humano: {motivo!r}"
+        return True, ("ok (lectura/reversible permitidas; irreversibles bloqueadas "
+                      "por requiere_humano: override respetado)")
+    except Exception as exc:
+        return False, f"excepcion: {exc!r}\n{traceback.format_exc()[:500]}"
+
+
+def _verificar_p16_whatsapp_dry_run() -> tuple[bool, str]:
+    """P16: enviar_whatsapp_business sin confirmar JAMÁS toca la app ni inventa
+    envío. Sin confirmar -> dry_run con preview y destinatario_hash; con
+    confirmar=True pero kill-switch apagado -> fail-closed, nunca 'enviado'."""
+    try:
+        import os
+        os.environ.pop("EIR_APP_CONTROL_ENABLED", None)
+        from core_desktop.app_control import enviar_whatsapp_business
+        r = enviar_whatsapp_business("Paciente Demo", "cita 10am", confirmar=False)
+        if not r.get("ok") or not r.get("dry_run"):
+            return False, f"FAIL: dry-run no devolvió ok+dry_run: {r}"
+        if not r.get("preview") or "cita 10am" not in r["preview"]:
+            return False, "FAIL: dry-run sin preview del contenido"
+        if not r.get("destinatario_hash") or "Paciente Demo" in str(r.get("destinatario_hash")):
+            return False, "FAIL: la traza expone el destinatario en claro (L6)"
+        if r.get("requiere_humano") is not True:
+            return False, "FAIL: acción irreversible sin requiere_humano"
+        rc = enviar_whatsapp_business("Paciente Demo", "cita 10am", confirmar=True)
+        if rc.get("enviado") is True or rc.get("ok") is True:
+            return False, f"FAIL: envío 'ok'/'enviado' sin kill-switch (L10/fail-open): {rc}"
+        return True, "ok (dry-run honesto con hash; confirmar sin switch -> fail-closed)"
+    except Exception as exc:
+        return False, f"excepcion: {exc!r}\n{traceback.format_exc()[:500]}"
+
+
+def _verificar_p17_escribir_dry_run() -> tuple[bool, str]:
+    """P17: escribir_texto_en sin confirmar devuelve preview con requiere_humano
+    (irreversible); con confirmar=True y kill-switch apagado -> fail-closed."""
+    try:
+        import os
+        os.environ.pop("EIR_APP_CONTROL_ENABLED", None)
+        from core_desktop.app_control import escribir_texto_en
+        r = escribir_texto_en("blender", "escala 1:1", confirmar=False)
+        if not r.get("ok") or not r.get("dry_run"):
+            return False, f"FAIL: escribir dry-run no devolvió ok+dry_run: {r}"
+        if r.get("requiere_humano") is not True:
+            return False, "FAIL: escribir_texto_en sin requiere_humano (irreversible)"
+        rc = escribir_texto_en("blender", "x", confirmar=True)
+        if rc.get("ok") is True or rc.get("escrito") is True:
+            return False, f"FAIL: escritura 'ok' sin kill-switch (L10/fail-open): {rc}"
+        return True, "ok (escribir: dry-run honesto y fail-closed sin kill-switch)"
+    except Exception as exc:
+        return False, f"excepcion: {exc!r}\n{traceback.format_exc()[:500]}"
+
+
+def _verificar_p18_registro_y_traza() -> tuple[bool, str]:
+    """P18: registrar_tools_app_control indexa las 5 en el plugin_registry y
+    el hash de destinatario tiene el largo del contrato (L6: traza sin PHI)."""
+    try:
+        from core_desktop.plugin_registry import listar, obtener
+        from core_desktop.app_control import registrar_tools_app_control, _hash_destinatario
+        registrar_tools_app_control()
+        herramientas = ("listar_apps_abiertas", "traer_al_frente", "escribir_texto_en",
+                        "capturar_pantalla_app", "enviar_whatsapp_business",
+                        "listar_plantillas", "render_plantilla")
+        faltantes = [h for h in herramientas if h not in listar()]
+        if faltantes:
+            return False, f"FAIL: tools no indexadas en plugin_registry: {faltantes}"
+        for h in herramientas:
+            if obtener(h) is None:
+                return False, f"FAIL: {h} indexada pero sin handler"
+        h = _hash_destinatario("Ana Paciente #1")
+        if not h or len(h) != 16:
+            return False, f"FAIL: hash de destinatario mal formado: {h!r}"
+        return True, "ok (7 tools de producto indexadas con handler; traza solo con hash)"
+    except Exception as exc:
+        return False, f"excepcion: {exc!r}\n{traceback.format_exc()[:500]}"
+
+
+def _mutacion_fb1() -> tuple[bool, str]:
+    """Mutación Fase B1: sin kill-switch, ninguna tool de producto puede tocar
+    la app real. Si alguien conectara las tools ignorando el switch (L10), el
+    arnés lo cazaría: el fail-closed debe decir 'app_control_desactivado'."""
+    try:
+        import os
+        os.environ.pop("EIR_APP_CONTROL_ENABLED", None)
+        from core_desktop.app_control import listar_apps_abiertas, enviar_whatsapp_business
+        r = listar_apps_abiertas()
+        if r.get("ok") is True:
+            return False, f"FAIL: listar_apps_abiertas tocó el desktop sin kill-switch: {r}"
+        rc = enviar_whatsapp_business("P", "m", confirmar=True)
+        if rc.get("enviado") is True:
+            return False, "FAIL: envío real sin kill-switch (L10)"
+        motivos = {r.get("motivo"), rc.get("motivo")}
+        if "app_control_desactivado" not in motivos:
+            return False, f"FAIL: fail-closed sin el motivo del kill-switch: {motivos}"
+        return True, "ok (sin kill-switch, producto no toca la app: fail-closed L10/L2)"
+    except Exception as exc:
+        return False, f"excepcion: {exc!r}\n{traceback.format_exc()[:500]}"
+
+# ─── FASE B2: anti-baneo medible + verificación visual (D074) ────────────
+
+def _verificar_p19_plantillas_nunca_identicas() -> tuple[bool, str]:
+    """P19: render_plantilla resuelve TODOS los placeholders (L4) y dos renders
+    con datos distintos NUNCA salen idénticos (patrón anti-baneo)."""
+    try:
+        from core_desktop import app_control
+        a = app_control.render_plantilla(
+            "recordatorio_cita_24h", nombre="Ana", fecha="5 ago",
+            hora="10:00", consultorio="Clinica", mensaje_libre="Traer radiografia")
+        b = app_control.render_plantilla(
+            "recordatorio_cita_24h", nombre="Luis", fecha="6 ago",
+            hora="14:30", consultorio="Clinica", mensaje_libre="Confirmar asistencia")
+        if not a.get("ok") or not b.get("ok"):
+            return False, f"FAIL: plantilla no renderiza: {a} / {b}"
+        if a["texto"] == b["texto"]:
+            return False, "FAIL: dos renders distintos salieron IDÉNTICOS (anti-baneo roto)"
+        if "{" in a["texto"] or "{" in b["texto"]:
+            return False, "FAIL: quedó un placeholder sin resolver en el texto (L4)"
+        # placeholder faltante -> fail-closed
+        c = app_control.render_plantilla("bienvenida", nombre="Ana")
+        if c.get("ok") is not False or c.get("motivo") != "placeholder_sin_resolver":
+            return False, f"FAIL: placeholder faltante no negó la plantilla: {c}"
+        if not c.get("faltantes"):
+            return False, "FAIL: el fail-closed no dice QUÉ placeholder falta"
+        return True, "ok (renders distintos jamás idénticos; placeholder faltante negado)"
+    except Exception as exc:
+        return False, f"excepcion: {exc!r}\n{traceback.format_exc()[:500]}"
+
+
+def _verificar_p20_tope_diario() -> tuple[bool, str]:
+    """P20: el tope diario (anti-baneo) es una cota dura y se lee EN LLAMADA
+    (L10). Con EIR_WHATSAPP_TOPE_DIARIO=0 el envío queda negado fail-closed;
+    el mecanismo es el mismo que bloquea el envío real cuando se agota el cupo."""
+    try:
+        import os
+        from core_desktop import app_control
+        os.environ["EIR_WHATSAPP_TOPE_DIARIO"] = "0"
+        try:
+            permitido, enviados, tope = app_control._verificar_tope_diario()
+            if permitido:
+                return False, f"FAIL: tope=0 permitió el envío ({enviados}/{tope}) — cota dura rota"
+            if tope != 0:
+                return False, f"FAIL: tope leído como {tope}, esperaba 0 (kill-switch congelado)"
+            # el envío real con confirmar=True también debe negarse (tope antes de app)
+            r = app_control.enviar_whatsapp_business("P", "m", confirmar=True)
+            if r.get("motivo") != "tope_diario_alcanzado":
+                return False, f"FAIL: el envío no respetó el tope: {r}"
+        finally:
+            os.environ.pop("EIR_WHATSAPP_TOPE_DIARIO", None)
+        return True, "ok (tope diario leído en llamada y respetado por el envío)"
+    except Exception as exc:
+        return False, f"excepcion: {exc!r}\n{traceback.format_exc()[:500]}"
+
+
+def _verificar_p21_verificacion_fail_closed() -> tuple[bool, str]:
+    """P21: la verificación UI (triangulación B2) es fail-closed sin ventana
+    real: nunca lanza, nunca afirma 'verificado', y jamás devuelve ok=True."""
+    try:
+        from core_desktop import verificacion_ui
+        if verificacion_ui.leer_arbol(None) != []:
+            return False, "FAIL: leer_arbol(None) no devolvió [] (debe ser fail-closed)"
+        c = verificacion_ui.verificar_campo_mensaje(None)
+        if c.get("ok") is not None:
+            return False, f"FAIL: campo sin ventana dio ok={c.get('ok')} (esperaba None)"
+        ch = verificacion_ui.verificar_chat_activo(None, "Ana")
+        if ch.get("ok") is not None:
+            return False, f"FAIL: chat sin ventana dio ok={ch.get('ok')} (esperaba None)"
+        e = verificacion_ui.verificar_envio(None, "frag")
+        if e.get("ok") is not None:
+            return False, f"FAIL: envío sin ventana dio ok={e.get('ok')} (esperaba None)"
+        return True, "ok (verificación UI fail-closed: nunca afirma sin ventana real)"
+    except Exception as exc:
+        return False, f"excepcion: {exc!r}\n{traceback.format_exc()[:500]}"
+
+
+def _mutacion_b2_tope() -> tuple[bool, str]:
+    """Mutación B2: si alguien quita el chequeo del tope diario (anti-baneo),
+    P20 DEBE cazarlo. Reasignamos _verificar_tope_diario a 'siempre permitido'
+    y exigimos que P20 falle; si P20 siguiera verde, el arnés es decorativo."""
+    try:
+        from core_desktop import app_control
+        original = app_control._verificar_tope_diario
+        app_control._verificar_tope_diario = lambda: (True, 0, 999999)
+        try:
+            ok, _ = _verificar_p20_tope_diario()
+        finally:
+            app_control._verificar_tope_diario = original
+        if ok:
+            return False, "FAIL: arnés NO caza el tope diario ignorado (mutación sobrevivió)"
+        return True, "ok (el arnés caza un tope ignorado: la cota dura está vigilada)"
+    except Exception as exc:
+        return False, f"excepcion: {exc!r}\n{traceback.format_exc()[:500]}"
+
+
 def _mutacion_fase2() -> tuple[bool, str]:
     """Mutación Fase 2: si quitamos una tool del JSON, P11-P13 DEBEN fallar.
 
@@ -414,6 +631,104 @@ def _mutacion_p1() -> tuple[bool, str]:
     return True, f"ok (mutacion probe: arn sigue verde SOLO porque frontera opera: {msg})"
 
 
+# ─── M-052 · Sesión cloud + actualizador de versión ─────────────────────
+
+def _verificar_p22_login_sin_crear_sesion() -> tuple[bool, str]:
+    """P22: el login con credenciales vacías NUNCA crea sesión (ok=True) y
+    estado() devuelve el contrato de 4 claves sin importar si hay red."""
+    try:
+        from core_desktop import sesion
+        est = sesion.estado()
+        for k in ("autenticado", "email", "nombre", "tier"):
+            if k not in est:
+                return False, f"FAIL: estado() sin clave {k!r}: {est}"
+        r = sesion.login("", "")
+        if r.get("ok") is True:
+            return False, "FAIL: login con credenciales vacías devolvió ok=True (fail-open)"
+        if not r.get("error"):
+            return False, f"FAIL: login fallido sin motivo: {r}"
+        return True, f"ok (login vacío negado: {r.get('error')}; contrato de estado completo)"
+    except Exception as exc:
+        return False, f"excepcion: {exc!r}\n{traceback.format_exc()[:500]}"
+
+
+def _verificar_p23_cloud_fail_closed_sin_sesion() -> tuple[bool, str]:
+    """P23: el cliente cloud SIN sesión responde honesto y orienta a login;
+    nunca inventa contenido del LLM (L2/L4). Independiente de la red:
+    forzamos token=None sin tocar el archivo real ~/.eir_dr."""
+    try:
+        from core_desktop import sesion
+        from core_desktop.cliente_cloud import ClienteEirCloud
+        original = sesion.token
+        sesion.token = lambda: None
+        try:
+            c = ClienteEirCloud("odontologo")
+            r = c._llamar_inference("hola", [], [])
+        finally:
+            sesion.token = original
+        texto = (r.choices[0].message.content or "") if getattr(r, "choices", None) else ""
+        if not texto.startswith("[EIR · cloud]"):
+            return False, f"FAIL: sin sesión no usó el marcador honesto: {texto!r}"
+        if "sesi" not in texto.lower():
+            return False, f"FAIL: sin sesión no orienta a iniciarla: {texto!r}"
+        if c.ultimo_texto_final is not None:
+            return False, "FAIL: respuesta honesta quedó marcada como final_text del LLM"
+        return True, f"ok (sin sesión → respuesta honesta: {texto[:48]}...)"
+    except Exception as exc:
+        return False, f"excepcion: {exc!r}\n{traceback.format_exc()[:500]}"
+
+
+def _mutacion_cloud_fail_open() -> tuple[bool, str]:
+    """Mutación M-052: si alguien sustituyera _respuesta_honesta por una que
+    inventa contenido del LLM (fail-open), P23 DEBE fallar. Reinyectamos el
+    parche y exigimos que P23 lo cace."""
+    try:
+        from core_desktop.cliente_cloud import ClienteEirCloud
+        from core_desktop.cliente_llm import _MockResponse
+        original = ClienteEirCloud._respuesta_honesta
+        ClienteEirCloud._respuesta_honesta = lambda self, motivo: _MockResponse(
+            {"content": "Respuesta del LLM inventada sin sesión", "tool_calls": None})
+        try:
+            ok, _ = _verificar_p23_cloud_fail_closed_sin_sesion()
+        finally:
+            ClienteEirCloud._respuesta_honesta = original
+        if ok:
+            return False, "FAIL: arnés NO caza un cliente cloud que inventa contenido (mutación sobrevivió)"
+        return True, "ok (P23 caza un cliente cloud que inventa contenido del LLM)"
+    except Exception as exc:
+        return False, f"excepcion: {exc!r}\n{traceback.format_exc()[:500]}"
+
+
+def _verificar_p24_actualizador() -> tuple[bool, str]:
+    """P24: el comparador semver es correcto y estado() nunca lanza y siempre
+    reporta la versión local real, haya o no red."""
+    try:
+        from core_desktop import actualizador
+        if not actualizador.version_actual() or not isinstance(actualizador.version_actual(), str):
+            return False, "FAIL: version_actual() vacía o no str"
+        if actualizador._claves("1.2.3-beta") != (1, 2, 3):
+            return False, f"FAIL: _claves no extrae el prefijo numérico: {actualizador._claves('1.2.3-beta')}"
+        if actualizador._claves("1.2") != (1, 2, 0):
+            return False, f"FAIL: _claves no rellena hasta 3 componentes: {actualizador._claves('1.2')}"
+        if not (actualizador._comparar("1.1.0", "1.0.0") > 0):
+            return False, "FAIL: 1.1.0 no es mayor que 1.0.0"
+        if actualizador._comparar("1.0.0", "1.0.0") != 0:
+            return False, "FAIL: versiones iguales no comparan a 0"
+        if actualizador._comparar("1.0.1", "1.0.2") >= 0:
+            return False, "FAIL: 1.0.1 no es menor que 1.0.2"
+        est = actualizador.estado(force=True)
+        for k in ("ok", "actual"):
+            if k not in est:
+                return False, f"FAIL: estado() sin clave {k!r}: {est}"
+        if est["actual"] != actualizador.version_actual():
+            return False, "FAIL: estado() reporta una versión distinta a la local"
+        if not isinstance(est["ok"], bool):
+            return False, "FAIL: estado().ok no es bool"
+        return True, f"ok (semver correcto; estado nunca lanza; actual={est['actual']})"
+    except Exception as exc:
+        return False, f"excepcion: {exc!r}\n{traceback.format_exc()[:500]}"
+
+
 def main() -> int:
     logging.basicConfig(level=logging.INFO,
                         format="%(asctime)s [%(levelname)s] %(message)s")
@@ -439,6 +754,19 @@ def main() -> int:
         ("P13 leer_texto_local declarada y pasa pre-hook",     _verificar_p13_leer_texto_declarada),
         ("P14 workflow leer_stl_local REAL llega a completo",  _verificar_p14_workflow_leer_stl_real),
         ("Mut-F2: tool inexistente Fase 2 bloqueada",          _mutacion_fase2),
+        ("P15 apps de producto declaradas y pasan pre-hook",   _verificar_p15_apps_declaradas),
+        ("P16 whatsapp dry-run honesto + fail-closed sin switch", _verificar_p16_whatsapp_dry_run),
+        ("P17 escribir dry-run honesto + fail-closed sin switch", _verificar_p17_escribir_dry_run),
+        ("P18 registro + traza sin destinatario en claro",     _verificar_p18_registro_y_traza),
+        ("Mut-FB1: sin kill-switch producto no toca la app",   _mutacion_fb1),
+        ("P19 plantillas nunca idénticas + sin huecos",        _verificar_p19_plantillas_nunca_identicas),
+        ("P20 tope diario leído en llamada y respetado",       _verificar_p20_tope_diario),
+        ("P21 verificación UI fail-closed sin ventana real",   _verificar_p21_verificacion_fail_closed),
+        ("Mut-B2: el arnés caza un tope diario ignorado",      _mutacion_b2_tope),
+        ("P22 login vacío negado + contrato de estado",        _verificar_p22_login_sin_crear_sesion),
+        ("P23 cloud fail-closed sin sesión",                   _verificar_p23_cloud_fail_closed_sin_sesion),
+        ("Mut-Cloud: P23 caza cliente que inventa contenido",  _mutacion_cloud_fail_open),
+        ("P24 actualizador semver + estado sin red",           _verificar_p24_actualizador),
     ]
     todos_ok = True
     for nombre, fn in checks:

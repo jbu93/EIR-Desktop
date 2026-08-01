@@ -48,6 +48,9 @@ a = Analysis(
         # Fail-closed silencioso mitigado: el JSON de autonomia VIAJA
         # en el bundle; el sandbox lo monta via PyInstaller.resource_path
         (str(DATA_ZONAS), "data"),
+        # Plantillas parametrizadas del rol 360° (D074 B2) — el render se
+        # niega si un placeholder queda sin resolver (L4)
+        (str(PROYECTO_RAIZ / "data" / "plantillas_producto.json"), "data"),
         # STL sintético de prueba que usa el arnés local (scripts/smoke_agente_local.py)
         (str(PROYECTO_RAIZ / "spike_probe" / "probe_data.stl"), "spike_probe"),
     ],
@@ -59,6 +62,13 @@ a = Analysis(
         "core_desktop.runner_laboratorio",
         "core_desktop.runner_marketing",
         "core_desktop.local_tools",
+        # M-052 · sesión cloud + versión
+        "core_desktop.sesion",
+        "core_desktop.cliente_cloud",
+        "core_desktop.actualizador",
+        # D074 · control de apps de escritorio (zona "producto")
+        "core_desktop.app_control",
+        "core_desktop.verificacion_ui",
         # Importados lazy por agente_loop
         "core.agente_loop",
         "core.autonomia",

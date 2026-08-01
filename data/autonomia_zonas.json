@@ -8,7 +8,8 @@
       "zona": {
         "clinica": "Toca PHI, historia clínica, diagnóstico o firma. Autonomía total aquí no es avance: es ilegal.",
         "investigacion": "Literatura, corpus, evidencia. Sin PHI, sin efectos irreversibles, todo auditable contra fuente.",
-        "administrativa": "RIPS, agenda, tarifas, directorio. Reversible pero con efecto económico/legal."
+        "administrativa": "RIPS, agenda, tarifas, directorio. Reversible pero con efecto económico/legal.",
+        "producto": "Opera las aplicaciones de escritorio del usuario (WhatsApp Business, CapCut, Blender, Chitubox, Anycubic Workshop) via UI automation de la app local, sin APIs oficiales. No toca la HC, pero el contenido que escribe puede incluir datos del paciente: misma frontera que la clinica (L1/L6). D074."
       },
       "efecto": {
         "lectura": "No modifica estado. Consulta y devuelve.",
@@ -72,6 +73,48 @@
       "efecto": "lectura",
       "requiere_humano": false,
       "descripcion": "Lee un .txt plano local para dar contexto adicional al agente. Tope 256 KB. No lee PDF. EIR Desktop Fase 2."
+    },
+    "listar_apps_abiertas": {
+      "zona": "producto",
+      "efecto": "lectura",
+      "requiere_humano": false,
+      "descripcion": "Lista las ventanas de las aplicaciones del rol 360° abiertas (WhatsApp Business, Blender, Chitubox, Anycubic, CapCut). Solo lectura."
+    },
+    "traer_al_frente": {
+      "zona": "producto",
+      "efecto": "escritura_reversible",
+      "requiere_humano": false,
+      "descripcion": "Trae al frente la ventana de una app abierta (reversible: no escribe ni envía)."
+    },
+    "escribir_texto_en": {
+      "zona": "producto",
+      "efecto": "escritura_irreversible",
+      "requiere_humano": true,
+      "descripcion": "Escribe texto como humano sobre el control activo de una app (puede ser PHI del paciente). Requiere confirmación humana explícita."
+    },
+    "capturar_pantalla_app": {
+      "zona": "producto",
+      "efecto": "lectura",
+      "requiere_humano": false,
+      "descripcion": "Captura la ventana de una app como PNG en memoria. Nunca se persiste ni se sube (L6)."
+    },
+    "enviar_whatsapp_business": {
+      "zona": "producto",
+      "efecto": "escritura_irreversible",
+      "requiere_humano": true,
+      "descripcion": "Envía un mensaje por la app local WhatsApp Business sin API oficial. Anti-baneo (tope diario + intervalos) y verificación UI. Requiere confirmación humana explícita (D074)."
+    },
+    "listar_plantillas": {
+      "zona": "producto",
+      "efecto": "lectura",
+      "requiere_humano": false,
+      "descripcion": "Lista los nombres de las plantillas parametrizadas de la agenda (solo lectura)."
+    },
+    "render_plantilla": {
+      "zona": "producto",
+      "efecto": "lectura",
+      "requiere_humano": false,
+      "descripcion": "Resuelve una plantilla con datos de la agenda real. Fail-closed (L4): un placeholder sin resolver niega el render."
     }
   }
 }

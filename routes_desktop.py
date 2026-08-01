@@ -50,6 +50,49 @@ def roles():
     return jsonify(roles=list(_ROLES))
 
 
+# ─── M-052 · sesión cloud + versión (el token nunca toca el webview) ─────
+def _mod_sesion():
+    try:
+        from .core_desktop import sesion
+        return sesion
+    except ImportError:
+        from core_desktop import sesion
+        return sesion
+
+
+def _mod_actualizador():
+    try:
+        from .core_desktop import actualizador
+        return actualizador
+    except ImportError:
+        from core_desktop import actualizador
+        return actualizador
+
+
+@bp_desktop.post("/api/login")
+def login_local():
+    payload = request.get_json(silent=True) or {}
+    res = _mod_sesion().login(payload.get("email", ""), payload.get("password", ""))
+    status = 200 if res.get("ok") else 401
+    return jsonify(res), status
+
+
+@bp_desktop.post("/api/logout")
+def logout_local():
+    _mod_sesion().logout()
+    return jsonify({"ok": True})
+
+
+@bp_desktop.get("/api/sesion")
+def sesion_local():
+    return jsonify(_mod_sesion().estado())
+
+
+@bp_desktop.get("/api/version")
+def version_local():
+    return jsonify(_mod_actualizador().estado())
+
+
 @bp_desktop.get("/api/shell/contrato")
 def contrato():
     try:

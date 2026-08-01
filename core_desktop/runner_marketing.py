@@ -32,9 +32,17 @@ def ejecutar_local(mensaje: str, historial: list | None = None,
         sistema=SISTEMA_MARKETING, habilitado=habilitar_loop,
         max_pasos=2, max_segundos=12.0,
     )
-    return {
-        "pasos": [{"n": p.n, "herramienta": p.herramienta, "ok": p.ok,
-                   "resumen": p.resumen, "motivo": p.motivo} for p in r.pasos],
+    # M-052 · cliente cloud: el backend ya narró la respuesta → se expone tal cual
+    traza_cloud = getattr(lc, "ultima_traza", None)
+    texto_final = getattr(lc, "ultimo_texto_final", None)
+    credito = getattr(lc, "ultimo_credito", None)
+    out = {
+        "pasos": traza_cloud if traza_cloud else [
+            {"n": p.n, "herramienta": p.herramienta, "ok": p.ok,
+             "resumen": p.resumen, "motivo": p.motivo} for p in r.pasos],
         "tope_alcanzado": r.tope_alcanzado, "motivo_fin": r.motivo_fin,
-        "segundos": r.segundos, "resumen": r.resumen_para_narrar(),
+        "segundos": r.segundos, "resumen": texto_final or r.resumen_para_narrar(),
     }
+    if credito is not None:
+        out["credito_restante_hoy"] = credito
+    return out

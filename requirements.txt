@@ -14,6 +14,12 @@ numpy-stl>=4.0.0
 pywebview>=6.0
 pydantic>=2.0
 
+# Fase B1 (D074): control de aplicaciones de escritorio del usuario (WhatsApp
+# Business, Blender, Chitubox, Anycubic, CapCut) via UI Automation. Se importa
+# perezosamente: sin el paquete, las tools de zona "producto" fallan fail-closed
+# honesto. Solo Windows con sesión gráfica (el arnés corre sin él).
+pywinauto>=0.6.8
+
 # Dependencias necesarias si el sandbox se conecta a core/ del proyecto
 # principal para validar el loop agentico real (no son instaladas por
 # el sandbox; se asume presentes en el entorno del proyecto padre).
