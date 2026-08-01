@@ -34,8 +34,13 @@ Uso
 """
 from __future__ import annotations
 
+import hashlib
+import http.server
 import logging
+import os
 import sys
+import tempfile
+import threading
 import traceback
 from pathlib import Path
 
@@ -729,6 +734,155 @@ def _verificar_p24_actualizador() -> tuple[bool, str]:
         return False, f"excepcion: {exc!r}\n{traceback.format_exc()[:500]}"
 
 
+# ─── D078 · auto-update (descarga + verificación SHA256 + script de reemplazo) ───
+
+def _servir_binario(bytes_: bytes) -> str:
+    """Levanta un mini servidor HTTP local que sirve ``bytes_`` y devuelve la URL.
+    Se usa para probar la descarga REAL sin tocar eirdr.com (L5: el arnés
+    corre sin red)."""
+    class _Handler(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):                       # noqa: N802
+            self.send_response(200)
+            self.send_header("Content-Type", "application/octet-stream")
+            self.send_header("Content-Length", str(len(bytes_)))
+            self.end_headers()
+            self.wfile.write(bytes_)
+        def log_message(self, *a):              # noqa: A002
+            pass
+
+    srv = http.server.HTTPServer(("127.0.0.1", 0), _Handler)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    return f"http://127.0.0.1:{srv.server_address[1]}/probe.exe", srv
+
+
+def _verificar_p25_descarga_hash_correcto() -> tuple[bool, str]:
+    """P25: la descarga con SHA256 correcto devuelve ok:true, la ruta existe
+    y el hash coincide (D078). Probado con un binario local, sin red."""
+    try:
+        from core_desktop import actualizador
+        binario = os.urandom(65536)
+        sha = hashlib.sha256(binario).hexdigest()
+        url, srv = _servir_binario(binario)
+        progresos = []
+        try:
+            r = actualizador.descargar_y_verificar(url, sha, "9.9.9-probe",
+                                                   on_progreso=lambda p: progresos.append(p))
+        finally:
+            srv.shutdown()
+        if not r.get("ok"):
+            return False, f"FAIL: descarga con hash correcto no ok: {r}"
+        ruta = Path(r["ruta"])
+        if not ruta.exists():
+            return False, f"FAIL: no se escribió el temporal: {r['ruta']}"
+        if ruta.read_bytes() != binario:
+            return False, "FAIL: el binario descargado no coincide con el servido"
+        if r["sha256"] != sha:
+            return False, f"FAIL: sha256 reportado no coincide: {r['sha256']}"
+        return True, f"ok (descarga real ok · sha256 correcto · progreso {len(progresos)} ticks)"
+    except Exception as exc:
+        return False, f"excepcion: {exc!r}\n{traceback.format_exc()[:500]}"
+
+
+def _verificar_p26_descarga_hash_incorrecto() -> tuple[bool, str]:
+    """P26: la descarga con SHA256 incorrecto NUNCA se instala: devuelve
+    ok:false con motivo sha256_no_coincide y borra el temporal (L2/L4/D078)."""
+    try:
+        from core_desktop import actualizador
+        binario = os.urandom(65536)
+        sha_malo = hashlib.sha256(b"otro").hexdigest()
+        url, srv = _servir_binario(binario)
+        try:
+            r = actualizador.descargar_y_verificar(url, sha_malo, "9.9.9-probe")
+        finally:
+            srv.shutdown()
+        if r.get("ok") is True:
+            return False, "FAIL: hash incorrecto devolvió ok:true (fail-open)"
+        if r.get("motivo") != "sha256_no_coincide":
+            return False, f"FAIL: motivo inesperado: {r.get('motivo')!r}"
+        ruta = Path(r["ruta"])
+        if ruta.exists():
+            return False, "FAIL: el temporal NO se borró tras hash incorrecto"
+        return True, "ok (hash incorrecto → fail-closed · temporal borrado)"
+    except Exception as exc:
+        return False, f"excepcion: {exc!r}\n{traceback.format_exc()[:500]}"
+
+
+def _mutacion_update_hash_ignorado() -> tuple[bool, str]:
+    """Mutación D078: si alguien quitara la verificación de hash (instala
+    cualquier binario), P26 DEBE fallar. Reinyectamos el parche y exigimos
+    que el arnés lo cace."""
+    try:
+        from core_desktop import actualizador
+        original = actualizador.descargar_y_verificar
+        actualizador.descargar_y_verificar = lambda *a, **k: {
+            "ok": True, "ruta": "C:\\nada.exe", "sha256": "ignorado", "tamano_bytes": 0}
+        try:
+            ok, _ = _verificar_p26_descarga_hash_incorrecto()
+        finally:
+            actualizador.descargar_y_verificar = original
+        if ok:
+            return False, "FAIL: arnés NO caza un instalador que ignora el hash (mutación sobrevivió)"
+        return True, "ok (P26 caza un instalador que ignora el SHA256)"
+    except Exception as exc:
+        return False, f"excepcion: {exc!r}\n{traceback.format_exc()[:500]}"
+
+
+def _verificar_p27_kill_switch_apagado() -> tuple[bool, str]:
+    """P27: el kill-switch EIR_DESKTOP_AUTOUPDATE nace APAGADO (L10). Sin la
+    env var, _auto_update_activo() es False; con '1' es True. Nada queda
+    congelado en import (se lee en llamada)."""
+    try:
+        from core_desktop import actualizador
+        antes = os.environ.get("EIR_DESKTOP_AUTOUPDATE")
+        os.environ.pop("EIR_DESKTOP_AUTOUPDATE", None)
+        try:
+            apagado = actualizador._auto_update_activo()
+        finally:
+            if antes is None:
+                os.environ.pop("EIR_DESKTOP_AUTOUPDATE", None)
+            else:
+                os.environ["EIR_DESKTOP_AUTOUPDATE"] = antes
+        if apagado is not False:
+            return False, f"FAIL: kill-switch nació ENCENDIDO sin env var (L10): {apagado}"
+        os.environ["EIR_DESKTOP_AUTOUPDATE"] = "1"
+        try:
+            encendido = actualizador._auto_update_activo()
+        finally:
+            if antes is None:
+                os.environ.pop("EIR_DESKTOP_AUTOUPDATE", None)
+            else:
+                os.environ["EIR_DESKTOP_AUTOUPDATE"] = antes
+        if encendido is not True:
+            return False, f"FAIL: kill-switch no se enciende con =1 (L10): {encendido}"
+        return True, "ok (kill-switch nace APAGADO; leído en llamada, se enciende con =1)"
+    except Exception as exc:
+        return False, f"excepcion: {exc!r}\n{traceback.format_exc()[:500]}"
+
+
+def _verificar_p28_script_reemplazo() -> tuple[bool, str]:
+    """P28: generar_script_reemplazo escribe un .bat que copia el nuevo .exe
+    sobre el actual, limpia el temporal y relanza. Afirma la PROPIEDAD (el
+    script existe y contiene las 3 operaciones), no el contenido exacto."""
+    try:
+        from core_desktop import actualizador
+        r = actualizador.generar_script_reemplazo("C:\\TEMP\\nuevo.exe",
+                                                  "C:\\Apps\\EIR_DR_Desktop.exe")
+        if not r.get("ok"):
+            return False, f"FAIL: no generó el script: {r}"
+        bat = Path(r["bat_ruta"])
+        if not bat.exists():
+            return False, f"FAIL: el .bat no existe: {r['bat_ruta']}"
+        texto = bat.read_text(encoding="utf-8", errors="replace").lower()
+        for clave, etiqueta in (("copy /y", "la copia del binario nuevo"),
+                                ("del /f /q", "la limpieza del temporal"),
+                                ("start \"\"", "el relanzamiento de la app")):
+            if clave.lower() not in texto:
+                return False, f"FAIL: el .bat no incluye {etiqueta} (clave {clave!r})"
+        return True, f"ok (script de reemplazo completo · {bat.name})"
+    except Exception as exc:
+        return False, f"excepcion: {exc!r}\n{traceback.format_exc()[:500]}"
+
+
 def main() -> int:
     logging.basicConfig(level=logging.INFO,
                         format="%(asctime)s [%(levelname)s] %(message)s")
@@ -767,6 +921,11 @@ def main() -> int:
         ("P23 cloud fail-closed sin sesión",                   _verificar_p23_cloud_fail_closed_sin_sesion),
         ("Mut-Cloud: P23 caza cliente que inventa contenido",  _mutacion_cloud_fail_open),
         ("P24 actualizador semver + estado sin red",           _verificar_p24_actualizador),
+        ("P25 descarga auto-update hash correcto",             _verificar_p25_descarga_hash_correcto),
+        ("P26 descarga auto-update hash incorrecto fail-closed", _verificar_p26_descarga_hash_incorrecto),
+        ("Mut-Update: P26 caza instalador que ignora hash",    _mutacion_update_hash_ignorado),
+        ("P27 kill-switch auto-update nace APAGADO (L10)",     _verificar_p27_kill_switch_apagado),
+        ("P28 script de reemplazo .exe completo",              _verificar_p28_script_reemplazo),
     ]
     todos_ok = True
     for nombre, fn in checks:

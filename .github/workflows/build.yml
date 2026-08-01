@@ -24,7 +24,7 @@ jobs:
           pip install -r requirements.txt
           pip install pyinstaller
 
-      - name: Run agent harness (15 properties)
+      - name: Run agent harness (30 properties)
         shell: bash
         env:
           PYTHONPATH: ${{ github.workspace }}

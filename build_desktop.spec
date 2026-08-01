@@ -90,7 +90,10 @@ a = Analysis(
     ],
     hookspath=[],
     hooksconfig={},
-    runtime_hooks=[],
+    # L10 · auto-update (D078): los kill-switches nacen APAGADOS en source; el
+    # runtime hook siembra EIR_DESKTOP_AUTOUPDATE=1 SOLO dentro del bundle del
+    # release (activación deliberada al publicar, nunca un deploy accidental).
+    runtime_hooks=[str(PROYECTO_RAIZ / "eir_desktop_runtime_hook.py")],
     excludes=[
         # Excluimos dependencias cloud-only del proyecto principal para
         # mantener bundle liviano y BYOK-only para lo cloud:

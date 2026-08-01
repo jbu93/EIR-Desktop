@@ -33,7 +33,7 @@
         </div>
         <div class="flex flex-col leading-tight min-w-0">
           <span class="font-bold text-lg text-primary tracking-tight truncate">EIR&nbsp;DR.</span>
-          <span class="font-label-caps text-[10px] text-on-surface-variant opacity-70">DESKTOP · SANDBOX v1.0.0</span>
+          <span class="font-label-caps text-[10px] text-on-surface-variant opacity-70">DESKTOP · v1.0.2</span>
         </div>
       </div>
 
@@ -66,9 +66,22 @@
             <p class="text-[10px] text-on-surface-variant" id="session-credito"></p>
             <button type="button" id="session-logout-btn" class="text-[11px] text-on-surface-variant hover:text-error text-left transition-colors">Cerrar sesión</button>
           </div>
-          <div id="update-banner" class="rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 flex items-center justify-between gap-2" hidden>
-            <span class="font-label-caps text-[10px] text-primary font-bold" id="update-text"></span>
-            <a id="update-link" href="#" target="_blank" rel="noopener" class="font-label-caps text-[10px] text-primary underline shrink-0">Descargar</a>
+          <div id="update-banner" class="rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 flex flex-col gap-2" hidden>
+            <div class="flex items-center justify-between gap-2">
+              <span class="font-label-caps text-[10px] text-primary font-bold" id="update-text"></span>
+              <a id="update-link" href="#" target="_blank" rel="noopener" class="font-label-caps text-[10px] text-primary underline shrink-0">Descargar</a>
+            </div>
+            <div class="flex flex-col gap-1.5">
+              <button type="button" id="update-now-btn" class="w-full bg-primary text-on-primary text-[11px] font-bold px-3 py-1.5 rounded-lg hover:opacity-90 transition-opacity">
+                Actualizar ahora
+              </button>
+              <div id="update-progress-wrap" class="flex flex-col gap-1" hidden>
+                <div class="h-1.5 w-full bg-primary/20 rounded-full overflow-hidden">
+                  <div id="update-progress-bar" class="h-full bg-primary rounded-full transition-all" style="width:0%"></div>
+                </div>
+                <span class="font-label-caps text-[9px] text-on-surface-variant" id="update-progress-text">Descargando…</span>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -272,6 +285,21 @@
          class="block text-center text-[11px] text-primary underline mt-3">
         ¿No tienes cuenta? Crea una en eirdr.com
       </a>
+    </div>
+  </div>
+
+  <!-- D078 · Confirmación de actualización (reemplazo del .exe) -->
+  <div id="update-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/50" aria-hidden="true">
+    <div class="bg-surface-container-lowest border border-outline-variant rounded-2xl p-6 w-[340px] soft-shadow">
+      <h3 class="text-headline-sm font-bold text-on-surface mb-1">Actualizar EIR DR. Desktop</h3>
+      <p class="text-[12px] text-on-surface-variant mb-4 leading-snug">
+        Se descargará la versión <span id="update-modal-version" class="font-bold text-primary"></span> y la
+        aplicación se reiniciará sola al terminar. Tu sesión e historial local se conservan.
+      </p>
+      <div class="flex gap-2">
+        <button type="button" id="update-confirm-btn" class="flex-1 bg-primary text-on-primary text-[12px] font-bold px-3 py-2.5 rounded-lg hover:opacity-90 transition-opacity">Actualizar</button>
+        <button type="button" id="update-cancel-btn" class="flex-1 bg-surface-container text-on-surface-variant text-[12px] font-bold px-3 py-2.5 rounded-lg hover:opacity-80 transition-opacity">Cancelar</button>
+      </div>
     </div>
   </div>
 

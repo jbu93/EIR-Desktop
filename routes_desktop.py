@@ -13,6 +13,8 @@ NO toca ``routes_narrativa.py`` (produccion). Define ``bp_desktop`` que:
 """
 from __future__ import annotations
 
+import threading
+
 from flask import Blueprint, jsonify, request
 
 bp_desktop = Blueprint("bp_desktop", __name__)
@@ -91,6 +93,91 @@ def sesion_local():
 @bp_desktop.get("/api/version")
 def version_local():
     return jsonify(_mod_actualizador().estado())
+
+
+# ─── D078 · auto-update del .exe (kill-switch L10 + descarga + reinicio) ───
+
+_ESTADO_UPDATE: dict = {"fase": "inactivo", "progreso": 0, "detalle": ""}
+_LOCK_UPDATE = threading.Lock()
+
+
+def _mod_actualizador_auto():
+    mod = _mod_actualizador()
+    if not mod._auto_update_activo():
+        return None
+    return mod
+
+
+@bp_desktop.post("/api/shell/actualizar")
+def actualizar():
+    """Inicia la descarga+verificación del .exe nuevo (D078).
+
+    Fail-closed (L2/L10): si el kill-switch EIR_DESKTOP_AUTOUPDATE está
+    apagado, responde 403 sin tocar nada. Exige hay_actualizacion (L4).
+    """
+    mod = _mod_actualizador_auto()
+    if mod is None:
+        return jsonify(ok=False, error="kill_switch_apagado", code=403), 403
+
+    est = mod.estado(force=True)
+    if not est.get("ok") or not est.get("hay_actualizacion"):
+        return jsonify(ok=False, error="sin_actualizacion",
+                       detalle=est.get("motivo") or "sin_release", code=409), 409
+
+    with _LOCK_UPDATE:
+        if _ESTADO_UPDATE.get("fase") in ("descargando", "aplicando"):
+            return jsonify(ok=True, fase=_ESTADO_UPDATE["fase"],
+                           progreso=_ESTADO_UPDATE["progreso"]), 200
+
+        url = est.get("url_windows") or ""
+        sha = est.get("sha256") or ""
+        version = est.get("disponible") or ""
+        if not url or not sha:
+            return jsonify(ok=False, error="sin_metadata", code=409), 409
+
+        _ESTADO_UPDATE.update({"fase": "descargando", "progreso": 0, "detalle": ""})
+
+        def _tarea():
+            def _cb_progreso(pct):
+                with _LOCK_UPDATE:
+                    _ESTADO_UPDATE.update({"progreso": int(pct)})
+            try:
+                r = mod.descargar_y_verificar(url, sha, version,
+                                              on_progreso=_cb_progreso)
+                if not r.get("ok"):
+                    with _LOCK_UPDATE:
+                        _ESTADO_UPDATE.update({"fase": "error",
+                                               "detalle": r.get("motivo") or "error"})
+                    return
+                bat = mod.generar_script_reemplazo(r["ruta"], _exe_actual())
+                if not bat.get("ok"):
+                    with _LOCK_UPDATE:
+                        _ESTADO_UPDATE.update({"fase": "error",
+                                               "detalle": bat.get("motivo") or "error"})
+                    return
+                with _LOCK_UPDATE:
+                    _ESTADO_UPDATE.update({"fase": "aplicando", "progreso": 100,
+                                           "bat_ruta": bat["bat_ruta"]})
+            except Exception as exc:              # noqa: BLE001
+                with _LOCK_UPDATE:
+                    _ESTADO_UPDATE.update({"fase": "error", "detalle": str(exc)})
+
+        threading.Thread(target=_tarea, daemon=True).start()
+        return jsonify(ok=True, fase="descargando", progreso=0), 202
+
+
+def _exe_actual() -> str:
+    """Ruta del .exe en ejecución (sys.executable dentro del bundle PyInstaller;
+    en dev es el python.exe)."""
+    import sys
+    return sys.executable
+
+
+@bp_desktop.get("/api/shell/actualizar/progreso")
+def progreso_actualizar():
+    with _LOCK_UPDATE:
+        est = dict(_ESTADO_UPDATE)
+    return jsonify(ok=True, **est)
 
 
 @bp_desktop.get("/api/shell/contrato")
