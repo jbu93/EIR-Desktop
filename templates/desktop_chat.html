@@ -101,7 +101,15 @@
           <button type="button" role="tab" aria-selected="false" data-mode="cowork" class="mode-btn px-6 py-1.5 rounded-lg font-tech-log text-tech-log transition-all active:scale-95">Cowork</button>
           <button type="button" role="tab" aria-selected="false" data-mode="auto" class="mode-btn px-6 py-1.5 rounded-lg font-tech-log text-tech-log transition-all active:scale-95">Automatizaciones</button>
         </nav>
-        <div class="flex items-center gap-1 w-8 justify-end">
+        <div class="flex items-center gap-1 w-auto justify-end">
+          <!-- M-057/M-061 · alterna el paradigma build (default) / plan: con plan
+               activo, EIR presenta los pasos y pesos ANTES de ejecutar nada. -->
+          <button type="button" id="paradigma-plan-btn" aria-pressed="false"
+                  class="flex items-center gap-1.5 px-3 py-1.5 rounded-full font-label-caps text-[10px] text-on-surface-variant border border-outline-variant hover:border-primary transition-colors"
+                  title="Con Modo plan activo, EIR presenta los pasos y pesos antes de ejecutar">
+            <span class="material-symbols-outlined text-[14px]">checklist</span>
+            Modo plan
+          </button>
           <button type="button" id="settings-btn" class="p-2 hover:bg-surface-container-high rounded-full transition-colors text-on-surface-variant" aria-label="Configuración" title="Configuración (próximamente)">
             <span class="material-symbols-outlined text-[20px]">settings</span>
           </button>
@@ -300,6 +308,55 @@
         <button type="button" id="update-confirm-btn" class="flex-1 bg-primary text-on-primary text-[12px] font-bold px-3 py-2.5 rounded-lg hover:opacity-90 transition-opacity">Actualizar</button>
         <button type="button" id="update-cancel-btn" class="flex-1 bg-surface-container text-on-surface-variant text-[12px] font-bold px-3 py-2.5 rounded-lg hover:opacity-80 transition-opacity">Cancelar</button>
       </div>
+    </div>
+  </div>
+
+  <!-- M-055 · Aprobación humana de una acción de alto riesgo (HITL).
+       Se muestra el comando/ruta LITERAL que se va a ejecutar: el doctor
+       aprueba el hecho, no una descripción amable del hecho. -->
+  <div id="approval-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/50" aria-hidden="true">
+    <div class="bg-surface-container-lowest border border-outline-variant rounded-2xl p-6 w-[440px] soft-shadow">
+      <div class="flex items-center gap-2 mb-1">
+        <span id="approval-risk" class="text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full bg-error/10 text-error">riesgo alto</span>
+        <h3 class="text-headline-sm font-bold text-on-surface">EIR pide tu permiso</h3>
+      </div>
+      <p class="text-[12px] text-on-surface-variant mb-3 leading-snug">
+        Esta acción no se ejecuta sin tu aprobación. Esto es exactamente lo que se
+        va a hacer:
+      </p>
+      <pre id="approval-detail" class="text-[12px] font-mono bg-surface-container border border-outline-variant rounded-lg px-3 py-2.5 mb-3 whitespace-pre-wrap break-all text-on-surface"></pre>
+      <ul id="approval-reasons" class="text-[11px] text-on-surface-variant list-disc pl-4 mb-4 flex flex-col gap-0.5"></ul>
+      <p id="approval-error" class="text-[12px] text-error font-bold mb-2" hidden></p>
+      <div class="flex gap-2">
+        <button type="button" id="approval-approve-btn" class="flex-1 bg-primary text-on-primary text-[12px] font-bold px-3 py-2.5 rounded-lg hover:opacity-90 transition-opacity">Aprobar y ejecutar</button>
+        <button type="button" id="approval-reject-btn" class="flex-1 bg-surface-container text-on-surface-variant text-[12px] font-bold px-3 py-2.5 rounded-lg hover:opacity-80 transition-opacity">Rechazar</button>
+      </div>
+      <p class="text-[10px] text-on-surface-variant mt-3 leading-snug">
+        Esta aprobación vale una sola vez y solo para esta acción exacta.
+      </p>
+    </div>
+  </div>
+
+  <!-- M-057/M-061 · Aprobación del PLAN completo (pasos + pesos) antes de que
+       el paradigma "auto" ejecute nada. -->
+  <div id="plan-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/50" aria-hidden="true">
+    <div class="bg-surface-container-lowest border border-outline-variant rounded-2xl p-6 w-[460px] soft-shadow">
+      <div class="flex items-center gap-2 mb-1">
+        <span class="text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full bg-primary/10 text-primary">plan propuesto</span>
+        <h3 class="text-headline-sm font-bold text-on-surface">EIR propone estos pasos</h3>
+      </div>
+      <p class="text-[12px] text-on-surface-variant mb-3 leading-snug">
+        Nada se ejecuta hasta que apruebes el plan completo. Peso total: <b id="plan-peso-total">—</b>.
+      </p>
+      <ol id="plan-pasos" class="text-[12px] font-mono bg-surface-container border border-outline-variant rounded-lg px-3 py-2.5 mb-3 flex flex-col gap-1.5 max-h-[220px] overflow-y-auto list-decimal pl-6"></ol>
+      <p id="plan-error" class="text-[12px] text-error font-bold mb-2" hidden></p>
+      <div class="flex gap-2">
+        <button type="button" id="plan-approve-btn" class="flex-1 bg-primary text-on-primary text-[12px] font-bold px-3 py-2.5 rounded-lg hover:opacity-90 transition-opacity">Aprobar plan y ejecutar</button>
+        <button type="button" id="plan-reject-btn" class="flex-1 bg-surface-container text-on-surface-variant text-[12px] font-bold px-3 py-2.5 rounded-lg hover:opacity-80 transition-opacity">Rechazar</button>
+      </div>
+      <p class="text-[10px] text-on-surface-variant mt-3 leading-snug">
+        Esta aprobación vale una sola vez y solo para este plan exacto.
+      </p>
     </div>
   </div>
 

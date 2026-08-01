@@ -43,6 +43,13 @@
 .mode-btn:hover { color: #154212; }
 .mode-btn.active { background: #154212; color: #ffffff; }
 
+/* ─── M-057/M-061 · toggle Modo plan ─── */
+#paradigma-plan-btn.active {
+  background: #154212;
+  color: #ffffff;
+  border-color: #154212;
+}
+
 /* ─── Selector de rol (píldoras) ─── */
 .role-btn { color: #42493e; background: transparent; }
 .role-btn:hover { background: #e8e8e3; }

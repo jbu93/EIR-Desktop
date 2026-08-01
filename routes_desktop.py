@@ -180,6 +180,27 @@ def progreso_actualizar():
     return jsonify(ok=True, **est)
 
 
+@bp_desktop.get("/api/opencode/estado")
+def opencode_estado():
+    """Diagnóstico honesto del motor BYOK local (M-059).
+
+    El doctor nunca ve una consola (pywebview no la tiene): este endpoint es
+    el único lugar donde puede enterarse de por qué su chat con OpenCode no
+    responde. No requiere que el proceso esté vivo — si nunca arrancó, o si
+    el módulo no se pudo importar, igual responde 200 con un motivo estable
+    en vez de un 500 críptico.
+    """
+    try:
+        from core_desktop.opencode_server import get_server_manager
+    except ImportError:
+        from .core_desktop.opencode_server import get_server_manager
+    try:
+        return jsonify(get_server_manager().estado())
+    except Exception as exc:               # noqa: BLE001 — diagnóstico, nunca un 500
+        return jsonify(disponible=False, motivo="error_interno",
+                       reintentos=0, fallo_persistente=False, detalle=str(exc)[:200])
+
+
 @bp_desktop.get("/api/shell/contrato")
 def contrato():
     try:
@@ -195,6 +216,14 @@ def conversar():
     rol = (payload.get("rol") or "").strip()
     mensaje = (payload.get("mensaje") or "").strip()
     historial = payload.get("historial") or []
+    # M-055 · aprobación humana emitida en un turno anterior. Vale una sola vez
+    # y solo para la herramienta y los argumentos exactos que el doctor aprobó.
+    token_aprobacion = (payload.get("token_aprobacion") or "").strip() or None
+    # M-057 · paradigma de ejecución (plan/build/auto) + plan aprobado y su token.
+    paradigma = (payload.get("paradigma") or "build").strip() or "build"
+    max_pesos = payload.get("max_pesos")
+    plan = payload.get("plan") or None
+    token_plan = (payload.get("token_plan") or "").strip() or None
 
     if rol not in _ROLES:
         return jsonify(error="rol_invalido", roles_aceptados=list(_ROLES),
@@ -204,8 +233,51 @@ def conversar():
 
     try:
         runner = _resolver_runner(rol)
-        resultado = runner.ejecutar_local(mensaje, historial, habilitar_loop=True)
+        resultado = runner.ejecutar_local(mensaje, historial, habilitar_loop=True,
+                                          token_aprobacion=token_aprobacion,
+                                          paradigma=paradigma,
+                                          max_pesos=max_pesos,
+                                          plan=plan,
+                                          token_plan=token_plan)
         return jsonify(rol=rol, resultado=resultado)
     except Exception as exc:               # noqa: BLE001
         return jsonify(error="runner_fallo", detalle=str(exc),
                        rol=rol, code=500), 500
+
+
+@bp_desktop.post("/api/shell/aprobar")
+def aprobar():
+    """Aprobación humana de una tool call de alto riesgo (M-055 · HITL).
+
+    El doctor aprueba un token emitido por ``agent_hooks``. Esta ruta NO ejecuta
+    nada: solo verifica que el token es válido para la tool y los argumentos
+    exactos que se van a ejecutar, y devuelve el token para que el siguiente
+    turno reanude el paso. Fail-closed: cualquier fallo → 403 con motivo estable.
+    """
+    payload = request.get_json(silent=True) or {}
+    token = (payload.get("token") or "").strip()
+    tool = (payload.get("tool") or "").strip()
+    args = payload.get("args") or {}
+
+    if not token or not tool:
+        return jsonify(error="solicitud_incompleta", code=400), 400
+
+    try:
+        from core.harness.layer2_risk.hitl import (
+            AprobacionInvalida, huella_args,
+        )
+    except Exception as exc:               # noqa: BLE001 — sin canal HITL, se niega
+        return jsonify(error="hitl_no_disponible", detalle=str(exc), code=503), 503
+
+    # No se consume el token aquí: se comprueba que corresponde a estos
+    # argumentos y se devuelve para que el paso lo gaste al ejecutarse. Así el
+    # único consumo ocurre en el momento real de la ejecución.
+    try:
+        from core.harness.layer2_risk import hitl as _hitl
+        _hitl.comprobar_aprobacion(token, tool, dict(args))
+    except AprobacionInvalida as exc:
+        return jsonify(error="aprobacion_invalida", motivo=exc.motivo, code=403), 403
+    except Exception as exc:               # noqa: BLE001
+        return jsonify(error="aprobacion_invalida", motivo=str(exc), code=403), 403
+
+    return jsonify(aprobado=True, tool=tool, huella=huella_args(tool, dict(args)))

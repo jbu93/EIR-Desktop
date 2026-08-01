@@ -45,6 +45,12 @@ a = Analysis(
         (str(PROYECTO_RAIZ / "core" / "schemas.py"), "core/schemas.py"),
         (str(PROYECTO_RAIZ / "core" / "guardas.py"), "core/guardas.py"),
         (str(PROYECTO_RAIZ / "core" / "audit_logger.py"), "core/audit_logger.py"),
+        # M-054/M-055/D082 · harness (Capa 1 schema + Capa 2 HITL + Capa 4
+        # egress + LSP) + paradigma plan/build/auto. Sin esto, terminal_tools
+        # y lsp_tools truenan con ModuleNotFoundError dentro del bundle (el
+        # mismo bug que D082 ya cazo una vez en el privado).
+        (str(PROYECTO_RAIZ / "core" / "harness"), "core/harness"),
+        (str(PROYECTO_RAIZ / "core" / "modo_plan.py"), "core/modo_plan.py"),
         # Fail-closed silencioso mitigado: el JSON de autonomia VIAJA
         # en el bundle; el sandbox lo monta via PyInstaller.resource_path
         (str(DATA_ZONAS), "data"),
@@ -69,6 +75,16 @@ a = Analysis(
         # D074 · control de apps de escritorio (zona "producto")
         "core_desktop.app_control",
         "core_desktop.verificacion_ui",
+        # M-054/M-055/M-056/M-059 · harness local (terminal/LSP/HITL/BYOK)
+        "core_desktop.cable_local",
+        "core_desktop.terminal_tools",
+        "core_desktop.lsp_tools",
+        "core_desktop.opencode_server",
+        "core_desktop.fish_audio_tools",
+        "core_desktop.model_catalog",
+        "core_desktop.agent_hooks",
+        "core_desktop.plugin_registry",
+        "core_desktop.workflow_orchestrator",
         # Importados lazy por agente_loop
         "core.agente_loop",
         "core.autonomia",
@@ -77,6 +93,13 @@ a = Analysis(
         "core.schemas",
         "core.guardas",
         "core.audit_logger",
+        "core.modo_plan",
+        "core.harness.layer1_schema.validator",
+        "core.harness.layer1_schema.sanitizers",
+        "core.harness.layer2_risk.hitl",
+        "core.harness.layer2_risk.risk_engine",
+        "core.harness.layer4_egress.egress",
+        "core.harness.lsp.cliente_lsp",
         # Flask & pywebview
         "flask",
         "webview",
@@ -85,6 +108,13 @@ a = Analysis(
         # numpy-stl (pure python, no MSVC needed)
         "numpy",
         "stl",
+        # Capa 1 del harness depende de pydantic para validar tool calls
+        "pydantic",
+        # BYOK/LSP: cliente HTTP + servidor de análisis de código
+        "httpx",
+        "pylsp",
+        # Fish Audio TTS local
+        "pygame",
         # stdlib modules that pyinstaller sometimes misses
         "json", "pathlib", "uuid", "hashlib", "base64", "mimetypes",
     ],

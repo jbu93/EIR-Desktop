@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """cliente_opencode.py · Adapter opencode serve como proveedor de inferencia.
 
 Misión M-051 — prototipo A1 (BYOK local). El desktop EIR habla a `opencode serve`
@@ -6,7 +8,7 @@ que el Soberano ya tiene configurados (Anthropic, Groq, NVIDIA, Cloudflare),
 manteniendo el harness clínico de EIR como envoltura.
 
 PRINCIPIOS (leyes que NO se violan):
-  · L3 Validator-First: el LLM se llama DESPUES del validador clínico en la ruta clínica.
+  · L3 Validator-First: el LLM se llama DESPUES del ClinicalValidator en la ruta clínica.
   · L6 PHI nunca sale en claro: el historial se anonimiza ANTES de este adapter.
   · L2 Fail-closed: si opencode serve está caído, respuesta honesta, nunca LLM sin validar.
   · L5 Offline: si EIR_OPENCODE_ENABLED apagado, se cae a ClienteMockSandbox.
@@ -18,8 +20,6 @@ El adapter mima la superficie `chat.completions.create(**kw)` que ya usa
 NO es un loop de tools propio: EIR orquesta las tools con autonomía por paso;
 opencode se llama SIN su loop agéntico (pura inferencia chat).
 """
-from __future__ import annotations
-
 import base64
 import json
 import os
@@ -27,6 +27,11 @@ import urllib.request
 import urllib.error
 
 from core_desktop.cliente_llm import _MockResponse, _MockMessage  # reusa la forma
+from core_desktop.model_catalog import (
+    Tier, Modo, Preferencia,
+    resolver_modelo, resolver_tts,
+    obtener_info_modelo
+)
 
 
 # ─── Kill-switch (L10): leído en tiempo de llamada ────────────────────
@@ -38,40 +43,62 @@ def _cloud_switch_activo() -> bool:
     return os.getenv("EIR_CLOUD_INFERENCE", "0").strip() in ("1", "true", "True", "yes")
 
 
-def resolver_cliente(rol: str = "odontologo"):
-    """Devuelve el cliente LLM adecuado según los kill-switches (L10).
+def _tier_permite_cloud() -> bool:
+    """M-058 · el tier real de la sesión decide, no el switch a secas.
 
-    1. EIR_CLOUD_INFERENCE=1   → ClienteEirCloud (gateway eirdr.com, M-052).
+    BYOK (gratis, con tu propia key) y EIR Cloud (de pago, sin key propia)
+    son mutuamente excluyentes: FREEMIUM jamás consume inferencia cloud
+    gratis aunque EIR_CLOUD_INFERENCE esté encendido — ese switch es la
+    válvula de operaciones (apaga TODO el gateway si hace falta), no una
+    licencia por sí sola. Fail-closed: si no se puede leer el tier, no."""
+    try:
+        from core_desktop import sesion
+        tier_str = (sesion.estado() or {}).get("tier", "freemium")
+        return Tier(tier_str.lower()) in (Tier.PAGO, Tier.ULTRA)
+    except Exception:
+        return False
+
+
+def resolver_cliente(rol: str = "odontologo"):
+    """Devuelve el cliente LLM adecuado según los kill-switches (L10) y el
+    tier real de la sesión (M-058).
+
+    1. EIR_CLOUD_INFERENCE=1 Y tier∈{PAGO,ULTRA} → ClienteEirCloud (M-052).
        Sin sesión guardada → el cliente responde "inicia sesión" (L2/L5).
     2. EIR_OPENCODE_ENABLED=1  → ClienteOpencode (BYOK local, M-051).
-    3. Default (ambos apagados) → ClienteMockSandbox (offline).
+    3. Default → ClienteMockSandbox (offline).
     Llamada en tiempo de ejecución (no a nivel de módulo) — cumple L10.
     """
-    if _cloud_switch_activo():
+    if _cloud_switch_activo() and _tier_permite_cloud():
         from core_desktop.cliente_cloud import ClienteEirCloud
         return ClienteEirCloud(rol=rol)
     if not _switch_activo():
         from core_desktop.cliente_llm import ClienteMockSandbox
         return ClienteMockSandbox(rol=rol)
+    
+    # Obtener tier y modo de la sesión local
+    try:
+        from core_desktop import sesion
+        estado_sesion = sesion.estado()
+        tier_str = estado_sesion.get("tier", "freemium")
+        # M-058 · Tier guarda sus VALORES en minúscula ("pago"/"ultra"); usar
+        # .upper() aquí siempre lanzaba y caía en el except, así que el BYOK
+        # local jamás detectaba el tier real de la sesión (bug preexistente,
+        # cazado de paso al escribir _tier_permite_cloud con el mismo patrón).
+        tier = Tier(tier_str.lower())
+    except Exception:
+        tier = Tier.FREEMIUM
+    
+    # Modo por defecto: build (para tools/código). El runner puede sobrescribir.
+    modo = Modo.BUILD
+    
     url = os.getenv("OPENCODE_SERVER_URL", "http://127.0.0.1:4096").rstrip("/")
-    return ClienteOpencode(base_url=url, rol=rol)
+    return ClienteOpencode(base_url=url, rol=rol, tier=tier, modo=modo)
 
 
-# ─── Mapeo modo + tier → modelo (control de EIR; el usuario NO ve el menú completo) ──
-_TIER_PLAN = {
-    "FREEMIUM": "groq/llama-3.1-8b-instant",        # free-tier: modelo barato/gratis
-    "PAGO":     "anthropic/claude-sonnet-4-5",     # pago: vanguardia (Plan)
-}
-_TIER_BUILD = {
-    "FREEMIUM": "groq/llama-3.1-8b-instant",
-    "PAGO":     "groq/llama-3.3-70b-versatile",    # build: potente pero barato
-}
-
-
-def resolver_modelo(modo: str = "build", tier: str = "FREEMIUM") -> str:
-    """Resuelve el modelo por modo (Plan/Build) y tier. EIR controla qué ve cada tier."""
-    tablas = _TIER_PLAN if modo == "plan" else _TIER_BUILD
-    return tablas.get(tier, tablas["FREEMIUM"])
+def resolver_modelo_tts(tier: Tier) -> str:
+    """Resuelve el modelo Fish Audio TTS por tier."""
+    return resolver_tts(tier)
 
 
 # ─── ClienteOpencode: superficie drop-in ─────────────────────────────
@@ -85,10 +112,13 @@ class ClienteOpencode:
 
     DEFAULT_TIMEOUT = 30.0
 
-    def __init__(self, base_url: str, rol: str = "odontologo", modelo: str | None = None):
+    def __init__(self, base_url: str, rol: str = "odontologo", modelo: str | None = None,
+                 tier: Tier = Tier.FREEMIUM, modo: Modo = Modo.BUILD):
         self.base_url = base_url.rstrip("/")
         self.rol = rol
-        self.modelo = modelo or "groq/llama-3.1-8b-instant"
+        self.tier = tier
+        self.modo = modo
+        self.modelo = modelo or resolver_modelo(tier, modo)
         # L10/L15: credenciales en tiempo de llamada, default vacío = sin auth
         self._auth_user = os.getenv("OPENCODE_SERVER_USER", "opencode").strip()
         self._auth_pass = os.getenv("OPENCODE_SERVER_PASSWORD", "").strip()
@@ -191,9 +221,9 @@ def _messages_a_texto(messages: list) -> str:
     """Convierte el historial de mensajes a texto plano para el `parts` de opencode.
 
     El historial YA debe venir anonimizado (L6) — este adapter confia en que el caller
-    pasó por el control de PHI antes. No anonimiza aquí de nuevo para no duplicar;
-    si un mensaje trae PHI cruda, se va a enviar. El control de PHI está en el runner,
-    no en el adapter.
+    (runner / agente_loop) pasó por core/anonymizer antes. No anonimiza aquí de nuevo
+    para no duplicar; pero si收到了 un mensaje con 'Paciente NAME', lo va a enviar.
+    El control de PHI está en el runner, no en el adapter.
     """
     chunks = []
     for m in messages or []:

@@ -116,8 +116,26 @@ class WorkflowOrchestrator:
             tool_name = paso.get("tool")
             args = dict(paso.get("args") or {})
 
-            pre = self._pre(rol, {"herramienta": tool_name}, sesion)
+            # Los args viajan al hook: la capa 2 ata la aprobación humana a los
+            # argumentos EXACTOS que se van a ejecutar (M-055). El token, si el
+            # doctor ya aprobó, viaja en el propio paso.
+            paso_hook = {"herramienta": tool_name, "args": args}
+            if paso.get("token_aprobacion"):
+                paso_hook["token_aprobacion"] = paso["token_aprobacion"]
+
+            pre = self._pre(rol, paso_hook, sesion)
             if not pre["permitido"]:
+                # Fail-closed intacto: sin aprobación no se ejecuta nada. La
+                # diferencia es que ahora el paso puede REANUDARSE con el token
+                # en vez de morir sin salida.
+                if pre.get("requiere_aprobacion"):
+                    return {
+                        "estado": "requiere_aprobacion",
+                        "pasos": traza,
+                        "resumen": f"El paso '{tool_name}' necesita tu aprobación.",
+                        "needs_clarification": None,
+                        "aprobacion": pre["solicitud"],
+                    }
                 return self._terminar("error", traza, f"Workflow interrumpido: {pre['motivo']}")
 
             handler = self._registro.obtener(tool_name)

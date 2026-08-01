@@ -25,6 +25,20 @@
     connection: 'checking',
     sesion: { autenticado: false }, // reflejo de /api/sesion (el token vive en el proceso Python)
     update: { fase: 'inactivo', version: '', pollTimer: null },
+    paradigmaPlan: false, // M-057/M-061 · false=build (default histórico), true=plan
+  };
+
+  // M-058/M-061 · nombres de tool locales que el servidor cloud puede pedir
+  // en delegación (D085, solo lectura). Etiqueta legible en la traza cuando
+  // aparecen — NO es un indicador en vivo (la respuesta llega ya completa,
+  // sin streaming), es honesto sobre lo que EIR hizo, no sobre cuándo.
+  const ETIQUETAS_TOOL = {
+    leer_archivo: 'Leyó un archivo local',
+    listar_archivos: 'Listó archivos locales',
+    buscar_texto: 'Buscó texto en archivos locales',
+    lsp_definicion: 'Buscó una definición de código',
+    lsp_referencias: 'Buscó referencias de código',
+    lsp_diagnosticos: 'Revisó diagnósticos de código',
   };
 
   const el = (id) => document.getElementById(id);
@@ -78,6 +92,7 @@
     updateModalVersion: el('update-modal-version'),
     updateConfirmBtn: el('update-confirm-btn'),
     updateCancelBtn: el('update-cancel-btn'),
+    paradigmaPlanBtn: el('paradigma-plan-btn'),
   };
 
   // ─── Arranque ───
@@ -142,6 +157,14 @@
     els.updateNowBtn.addEventListener('click', abrirConfirmacionActualizar);
     els.updateCancelBtn.addEventListener('click', cerrarConfirmacionActualizar);
     els.updateConfirmBtn.addEventListener('click', iniciarActualizacion);
+
+    // M-057/M-061 · alterna build/plan. Solo cambia CÓMO se envía el próximo
+    // mensaje (paradigma) — cero efecto sobre lo ya conversado.
+    els.paradigmaPlanBtn.addEventListener('click', () => {
+      state.paradigmaPlan = !state.paradigmaPlan;
+      els.paradigmaPlanBtn.setAttribute('aria-pressed', String(state.paradigmaPlan));
+      els.paradigmaPlanBtn.classList.toggle('active', state.paradigmaPlan);
+    });
   }
 
   function autoGrow(textarea) {
@@ -251,7 +274,8 @@
       body.className = 'flex-1';
       const nombre = document.createElement('div');
       nombre.className = 'paso-nombre';
-      nombre.textContent = (p.herramienta || '?') + (p.ok ? ' · OK' : ' · FAIL (' + (p.motivo || 'sin motivo') + ')');
+      const etiqueta = ETIQUETAS_TOOL[p.herramienta] ? `${ETIQUETAS_TOOL[p.herramienta]} (${p.herramienta})` : (p.herramienta || '?');
+      nombre.textContent = etiqueta + (p.ok ? ' · OK' : ' · FAIL (' + (p.motivo || 'sin motivo') + ')');
       body.appendChild(nombre);
       if (p.resumen) {
         const detalle = document.createElement('div');
@@ -282,7 +306,7 @@
     if (viewport) viewport.scrollTop = viewport.scrollHeight;
   }
 
-  async function enviarMensaje(rol, mensaje, { destino }) {
+  async function enviarMensaje(rol, mensaje, { destino, tokenAprobacion, paradigma, plan, tokenPlan }) {
     const historialPrevio = (state.historyByRole[rol] || [])
       .slice(-10)
       .map((t) => ({ role: t.rol === 'usuario' ? 'user' : 'assistant', text: t.texto }));
@@ -296,13 +320,23 @@
       esperaRow = pintarLabEntry('eir', '…pensando');
     }
 
+    // M-057/M-061 · si no viene explícito (reintento tras aprobar un plan),
+    // usa el paradigma que el doctor eligió con el botón "Modo plan".
+    const paradigmaFinal = paradigma || (state.paradigmaPlan ? 'plan' : 'build');
+
     let resultado = null;
     let error = null;
     try {
       const resp = await fetch('/api/shell/conversar', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ rol, mensaje, historial: historialPrevio }),
+        body: JSON.stringify({
+          rol, mensaje, historial: historialPrevio,
+          token_aprobacion: tokenAprobacion || '',
+          paradigma: paradigmaFinal,
+          plan: plan || null,
+          token_plan: tokenPlan || '',
+        }),
       });
       const data = await resp.json().catch(() => ({}));
       if (!resp.ok) {
@@ -344,6 +378,167 @@
 
     saveToStorage();
     renderHistory();
+
+    // M-057/M-061 · el modelo propuso un PLAN completo (paradigma=plan) y
+    // espera aprobación antes de que "auto" ejecute nada.
+    if (!error && resultado && resultado.aprobacion_pendiente
+        && resultado.aprobacion_pendiente.tipo === 'plan' && !tokenPlan) {
+      const token = await pedirAprobacionPlan(resultado.plan, resultado.aprobacion_pendiente);
+      if (token) {
+        await enviarMensaje(rol, mensaje, {
+          destino, paradigma: 'auto', plan: resultado.plan, tokenPlan: token,
+        });
+      } else {
+        addSystemNote('Plan rechazado: no se ejecutó ningún paso.');
+      }
+      return;
+    }
+
+    // M-055 · un paso quedó esperando permiso humano. Se le muestra al doctor
+    // lo que se va a ejecutar; si aprueba, se reintenta el MISMO mensaje con el
+    // token. Si rechaza, no se reintenta nada.
+    if (!error && resultado && resultado.aprobacion_pendiente
+        && resultado.aprobacion_pendiente.tipo !== 'plan' && !tokenAprobacion) {
+      const token = await pedirAprobacion(resultado.aprobacion_pendiente);
+      if (token) {
+        await enviarMensaje(rol, mensaje, { destino, tokenAprobacion: token });
+      } else {
+        addSystemNote('Acción rechazada: no se ejecutó nada.');
+      }
+    }
+  }
+
+  // ─── Aprobación humana de acciones de alto riesgo (M-055 · HITL) ───
+  function pedirAprobacion(solicitud) {
+    return new Promise((resolve) => {
+      const modal = document.getElementById('approval-modal');
+      const detalle = document.getElementById('approval-detail');
+      const razones = document.getElementById('approval-reasons');
+      const badge = document.getElementById('approval-risk');
+      const errorEl = document.getElementById('approval-error');
+      const btnOk = document.getElementById('approval-approve-btn');
+      const btnNo = document.getElementById('approval-reject-btn');
+      if (!modal) { resolve(null); return; }
+
+      const riesgo = solicitud.riesgo || {};
+      detalle.textContent = solicitud.resumen || solicitud.tool || '(sin detalle)';
+      badge.textContent = 'riesgo ' + (riesgo.nivel || 'alto');
+      razones.innerHTML = '';
+      (riesgo.razones || []).forEach((r) => {
+        const li = document.createElement('li');
+        li.textContent = r;
+        razones.appendChild(li);
+      });
+      errorEl.hidden = true;
+      modal.classList.remove('hidden');
+      modal.classList.add('flex');
+
+      function cerrar(valor) {
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
+        btnOk.removeEventListener('click', onOk);
+        btnNo.removeEventListener('click', onNo);
+        resolve(valor);
+      }
+
+      async function onOk() {
+        btnOk.disabled = true;
+        try {
+          const resp = await fetch('/api/shell/aprobar', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              token: solicitud.token, tool: solicitud.tool, args: solicitud.args || {},
+            }),
+          });
+          const data = await resp.json().catch(() => ({}));
+          if (!resp.ok || !data.aprobado) {
+            errorEl.textContent = 'No se pudo aprobar: ' + (data.motivo || data.error || ('HTTP ' + resp.status));
+            errorEl.hidden = false;
+            return;
+          }
+          cerrar(solicitud.token);
+        } catch (e) {
+          errorEl.textContent = 'Backend local no disponible';
+          errorEl.hidden = false;
+        } finally {
+          btnOk.disabled = false;
+        }
+      }
+
+      function onNo() { cerrar(null); }
+
+      btnOk.addEventListener('click', onOk);
+      btnNo.addEventListener('click', onNo);
+    });
+  }
+
+  // ─── Aprobación de un PLAN completo (M-057/M-061) ───
+  // Distinto de pedirAprobacion(): aquí se listan todos los pasos propuestos
+  // y el "tool" firmado por el backend es literalmente "_plan".
+  function pedirAprobacionPlan(plan, solicitud) {
+    return new Promise((resolve) => {
+      const modal = document.getElementById('plan-modal');
+      const pesoTotal = document.getElementById('plan-peso-total');
+      const pasosEl = document.getElementById('plan-pasos');
+      const errorEl = document.getElementById('plan-error');
+      const btnOk = document.getElementById('plan-approve-btn');
+      const btnNo = document.getElementById('plan-reject-btn');
+      if (!modal || !plan) { resolve(null); return; }
+
+      const pasos = plan.pasos || [];
+      pesoTotal.textContent = String(plan.peso_total ?? '—');
+      pasosEl.innerHTML = '';
+      pasos.forEach((p) => {
+        const li = document.createElement('li');
+        li.textContent = `${p.tool} (peso ${p.peso}) — ${p.justificacion || 'sin justificación'}`;
+        pasosEl.appendChild(li);
+      });
+      errorEl.hidden = true;
+      modal.classList.remove('hidden');
+      modal.classList.add('flex');
+
+      function cerrar(valor) {
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
+        btnOk.removeEventListener('click', onOk);
+        btnNo.removeEventListener('click', onNo);
+        resolve(valor);
+      }
+
+      async function onOk() {
+        btnOk.disabled = true;
+        try {
+          const pasosReducidos = pasos.map((p) => ({
+            tool: p.tool, args: p.args || {}, justificacion: p.justificacion || '',
+          }));
+          const resp = await fetch('/api/shell/aprobar', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              token: solicitud.token, tool: '_plan', args: { pasos: pasosReducidos },
+            }),
+          });
+          const data = await resp.json().catch(() => ({}));
+          if (!resp.ok || !data.aprobado) {
+            errorEl.textContent = 'No se pudo aprobar: ' + (data.motivo || data.error || ('HTTP ' + resp.status));
+            errorEl.hidden = false;
+            return;
+          }
+          cerrar(solicitud.token);
+        } catch (e) {
+          errorEl.textContent = 'Backend local no disponible';
+          errorEl.hidden = false;
+        } finally {
+          btnOk.disabled = false;
+        }
+      }
+
+      function onNo() { cerrar(null); }
+
+      btnOk.addEventListener('click', onOk);
+      btnNo.addEventListener('click', onNo);
+    });
   }
 
   // ─── Panel Laboratorio (Cowork) ───
@@ -608,6 +803,32 @@
     }
   }
 
+  // M-059/M-061 · motivos estables de OpenCodeServerManager.estado() → texto
+  // en español para el doctor (pywebview no tiene consola visible: este
+  // panel es el único lugar donde puede enterarse de por qué BYOK no responde).
+  const MOTIVOS_OPENCODE = {
+    opencode_no_instalado: 'OpenCode no está instalado',
+    timeout_arranque: 'OpenCode tardó demasiado en arrancar',
+    proceso_crasheo: 'OpenCode se cerró inesperadamente',
+    fallo_persistente: 'OpenCode no pudo arrancar tras varios intentos',
+    error_arranque: 'Error al iniciar OpenCode',
+    error_interno: 'No se pudo consultar el estado de OpenCode',
+  };
+
+  async function checkOpencodeEstado() {
+    // Diagnóstico honesto, no crítico: si falla o el endpoint no existe en
+    // esta versión del backend, el status genérico de /health ya pintado
+    // por checkConnection() se queda tal cual (no se sobreescribe con nada).
+    try {
+      const resp = await fetch('/api/opencode/estado', { cache: 'no-cache' });
+      const d = await resp.json().catch(() => null);
+      if (!d) return;
+      if (d.disponible === false && d.motivo) {
+        els.statusText.textContent = MOTIVOS_OPENCODE[d.motivo] || ('OpenCode: ' + d.motivo);
+      }
+    } catch (e) { /* silencioso a propósito: es un dato adicional, no crítico */ }
+  }
+
   // ─── Estado de conexión (honesto, sin inventar "Pro"/tiers) ───
   async function checkConnection() {
     try {
@@ -617,6 +838,7 @@
         els.statusDot.classList.remove('offline');
         els.statusDot.classList.add('online');
         els.statusText.textContent = 'Backend local activo';
+        await checkOpencodeEstado();
         return;
       }
       throw new Error('health check fallo');
