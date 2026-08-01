@@ -64,6 +64,10 @@ def _buscar_autonomia_zonas() -> str | None:
     """
     here = os.path.dirname(os.path.abspath(__file__))
     candidates = [
+        # 1 nivel: estructura plana del repo publico (core_desktop/ en la raiz).
+        os.path.join(here, "..", "data", "autonomia_zonas.json"),
+        # 2-4 niveles: estructura anidada del repo privado
+        # (eir_desktop_v1/core_desktop/ colgado bajo la raiz del monorepo).
         os.path.join(here, "..", "..", "data", "autonomia_zonas.json"),
         os.path.join(here, "..", "..", "..", "data", "autonomia_zonas.json"),
         os.path.join(here, "..", "..", "..", "..", "data", "autonomia_zonas.json"),
