@@ -24,7 +24,6 @@
     conversations: [], // {id, role, title, timestamp}
     connection: 'checking',
     sesion: { autenticado: false }, // reflejo de /api/sesion (el token vive en el proceso Python)
-    update: { fase: 'inactivo', version: '', pollTimer: null },
     paradigmaPlan: false, // M-057/M-061 · false=build (default histórico), true=plan
   };
 
@@ -43,9 +42,36 @@
 
   const el = (id) => document.getElementById(id);
 
+  /**
+   * Mapa de elementos del DOM, tipado una sola vez aquí (en vez de castear
+   * cada acceso disperso en el archivo). Los tipos concretos vienen del tag
+   * real en desktop_chat.html — `el()` solo sabe HTMLElement|null, por eso
+   * cada propiedad que necesita .value/.disabled/.href/.requestSubmit() se
+   * anota con su subtipo real.
+   * @type {{
+   *   modeBtns: () => HTMLElement[], roleBtns: () => HTMLElement[],
+   *   panelChat: HTMLElement, panelCowork: HTMLElement, panelAuto: HTMLElement,
+   *   coworkGeneric: HTMLElement, coworkLab: HTMLElement,
+   *   messages: HTMLElement, welcome: HTMLElement,
+   *   chatForm: HTMLFormElement, chatInput: HTMLTextAreaElement, sendBtn: HTMLButtonElement,
+   *   tracePanel: HTMLElement, traceContent: HTMLElement,
+   *   labForm: HTMLFormElement, labInput: HTMLInputElement, labStream: HTMLElement,
+   *   statusDot: HTMLElement, statusText: HTMLElement,
+   *   historyList: HTMLElement, historyEmpty: HTMLElement, clearHistoryBtn: HTMLButtonElement,
+   *   footerRoleLabel: HTMLElement, settingsBtn: HTMLButtonElement,
+   *   sessionLoggedOut: HTMLElement, sessionLoggedIn: HTMLElement,
+   *   sessionUser: HTMLElement, sessionCredito: HTMLElement,
+   *   sessionLoginBtn: HTMLButtonElement, sessionLogoutBtn: HTMLButtonElement,
+   *   loginModal: HTMLElement, loginForm: HTMLFormElement,
+   *   loginEmail: HTMLInputElement, loginPassword: HTMLInputElement,
+   *   loginError: HTMLElement, loginSubmitBtn: HTMLButtonElement, loginCancelBtn: HTMLButtonElement,
+   *   updateBanner: HTMLElement, updateText: HTMLElement, updateLink: HTMLAnchorElement,
+   *   paradigmaPlanBtn: HTMLButtonElement,
+   * }}
+   */
   const els = {
-    modeBtns: () => Array.from(document.querySelectorAll('.mode-btn')),
-    roleBtns: () => Array.from(document.querySelectorAll('.role-btn')),
+    modeBtns: () => /** @type {HTMLElement[]} */ (Array.from(document.querySelectorAll('.mode-btn'))),
+    roleBtns: () => /** @type {HTMLElement[]} */ (Array.from(document.querySelectorAll('.role-btn'))),
     panelChat: el('panel-chat'),
     panelCowork: el('panel-cowork'),
     panelAuto: el('panel-auto'),
@@ -53,46 +79,39 @@
     coworkLab: el('cowork-lab'),
     messages: el('messages'),
     welcome: el('welcome-message'),
-    chatForm: el('chat-form'),
-    chatInput: el('chat-input'),
-    sendBtn: el('send-btn'),
+    chatForm: /** @type {HTMLFormElement} */ (el('chat-form')),
+    chatInput: /** @type {HTMLTextAreaElement} */ (el('chat-input')),
+    sendBtn: /** @type {HTMLButtonElement} */ (el('send-btn')),
+    micBtn: /** @type {HTMLButtonElement} */ (el('mic-btn')),
     tracePanel: el('trace-panel'),
     traceContent: el('trace-content'),
-    labForm: el('lab-chat-form'),
-    labInput: el('lab-chat-input'),
+    labForm: /** @type {HTMLFormElement} */ (el('lab-chat-form')),
+    labInput: /** @type {HTMLInputElement} */ (el('lab-chat-input')),
     labStream: el('lab-thought-stream'),
     statusDot: el('status-dot'),
     statusText: el('status-text'),
     historyList: el('history-list'),
     historyEmpty: el('history-empty'),
-    clearHistoryBtn: el('clear-history-btn'),
+    clearHistoryBtn: /** @type {HTMLButtonElement} */ (el('clear-history-btn')),
     footerRoleLabel: el('footer-role-label'),
-    settingsBtn: el('settings-btn'),
+    settingsBtn: /** @type {HTMLButtonElement} */ (el('settings-btn')),
     sessionLoggedOut: el('session-logged-out'),
     sessionLoggedIn: el('session-logged-in'),
     sessionUser: el('session-user'),
     sessionCredito: el('session-credito'),
-    sessionLoginBtn: el('session-login-btn'),
-    sessionLogoutBtn: el('session-logout-btn'),
+    sessionLoginBtn: /** @type {HTMLButtonElement} */ (el('session-login-btn')),
+    sessionLogoutBtn: /** @type {HTMLButtonElement} */ (el('session-logout-btn')),
     loginModal: el('login-modal'),
-    loginForm: el('login-form'),
-    loginEmail: el('login-email'),
-    loginPassword: el('login-password'),
+    loginForm: /** @type {HTMLFormElement} */ (el('login-form')),
+    loginEmail: /** @type {HTMLInputElement} */ (el('login-email')),
+    loginPassword: /** @type {HTMLInputElement} */ (el('login-password')),
     loginError: el('login-error'),
-    loginSubmitBtn: el('login-submit-btn'),
-    loginCancelBtn: el('login-cancel-btn'),
+    loginSubmitBtn: /** @type {HTMLButtonElement} */ (el('login-submit-btn')),
+    loginCancelBtn: /** @type {HTMLButtonElement} */ (el('login-cancel-btn')),
     updateBanner: el('update-banner'),
     updateText: el('update-text'),
-    updateLink: el('update-link'),
-    updateNowBtn: el('update-now-btn'),
-    updateProgressWrap: el('update-progress-wrap'),
-    updateProgressBar: el('update-progress-bar'),
-    updateProgressText: el('update-progress-text'),
-    updateModal: el('update-modal'),
-    updateModalVersion: el('update-modal-version'),
-    updateConfirmBtn: el('update-confirm-btn'),
-    updateCancelBtn: el('update-cancel-btn'),
-    paradigmaPlanBtn: el('paradigma-plan-btn'),
+    updateLink: /** @type {HTMLAnchorElement} */ (el('update-link')),
+    paradigmaPlanBtn: /** @type {HTMLButtonElement} */ (el('paradigma-plan-btn')),
   };
 
   // ─── Arranque ───
@@ -149,14 +168,12 @@
       addSystemNote('Configuración: disponible próximamente. Hoy no hay ajustes que tocar en el sandbox.');
     });
 
+    bindMicDictation();
+
     els.sessionLoginBtn.addEventListener('click', abrirLogin);
     els.loginCancelBtn.addEventListener('click', cerrarLogin);
     els.loginForm.addEventListener('submit', enviarLogin);
     els.sessionLogoutBtn.addEventListener('click', logout);
-
-    els.updateNowBtn.addEventListener('click', abrirConfirmacionActualizar);
-    els.updateCancelBtn.addEventListener('click', cerrarConfirmacionActualizar);
-    els.updateConfirmBtn.addEventListener('click', iniciarActualizacion);
 
     // M-057/M-061 · alterna build/plan. Solo cambia CÓMO se envía el próximo
     // mensaje (paradigma) — cero efecto sobre lo ya conversado.
@@ -164,6 +181,60 @@
       state.paradigmaPlan = !state.paradigmaPlan;
       els.paradigmaPlanBtn.setAttribute('aria-pressed', String(state.paradigmaPlan));
       els.paradigmaPlanBtn.classList.toggle('active', state.paradigmaPlan);
+    });
+  }
+
+  // ─── §UI-2026-08-02 · Dictado por voz (Web Speech API) ───
+  // Mismo patrón que btn-mic-chat de la web (atelier_shell.js). No gasta la
+  // cuota/API de EIR (no es una llamada a Groq/NVIDIA/Google) — el motor de
+  // reconocimiento lo resuelve el navegador/ventana nativa, no nuestro backend.
+  //
+  // HONESTIDAD (L4): si el motor de la ventana (pywebview/WebView2) no expone
+  // SpeechRecognition, el botón se OCULTA. No se finge un dictado que no va a
+  // funcionar — se declara la ausencia, como manda el protocolo.
+  let _reconocedorVoz = null;
+  let _dictando = false;
+
+  function bindMicDictation() {
+    if (!els.micBtn) return;
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) {
+      els.micBtn.hidden = true;
+      return;
+    }
+    _reconocedorVoz = new SR();
+    _reconocedorVoz.lang = 'es-CO';
+    _reconocedorVoz.continuous = true;
+    _reconocedorVoz.interimResults = false;
+
+    _reconocedorVoz.onstart = () => {
+      _dictando = true;
+      els.micBtn.classList.add('on');
+      els.micBtn.title = 'Detener dictado';
+    };
+    _reconocedorVoz.onend = () => {
+      _dictando = false;
+      els.micBtn.classList.remove('on');
+      els.micBtn.title = 'Dictar por voz (sin gastar la cuota de EIR)';
+    };
+    _reconocedorVoz.onerror = () => {
+      _dictando = false;
+      els.micBtn.classList.remove('on');
+    };
+    _reconocedorVoz.onresult = (ev) => {
+      let texto = '';
+      for (let i = ev.resultIndex; i < ev.results.length; i++) {
+        if (ev.results[i].isFinal) texto += ev.results[i][0].transcript;
+      }
+      if (!texto) return;
+      const previo = els.chatInput.value;
+      els.chatInput.value = (previo ? previo.trim() + ' ' : '') + texto.trim();
+      autoGrow(els.chatInput);
+    };
+
+    els.micBtn.addEventListener('click', () => {
+      if (_dictando) { _reconocedorVoz.stop(); return; }
+      try { _reconocedorVoz.start(); } catch (_e) { /* ya estaba iniciado */ }
     });
   }
 
@@ -306,6 +377,11 @@
     if (viewport) viewport.scrollTop = viewport.scrollHeight;
   }
 
+  /**
+   * @param {string} rol
+   * @param {string} mensaje
+   * @param {{ destino: string, tokenAprobacion?: string, paradigma?: string, plan?: any, tokenPlan?: string }} opciones
+   */
   async function enviarMensaje(rol, mensaje, { destino, tokenAprobacion, paradigma, plan, tokenPlan }) {
     const historialPrevio = (state.historyByRole[rol] || [])
       .slice(-10)
@@ -345,7 +421,7 @@
         resultado = data.resultado || {};
       }
     } catch (e) {
-      error = 'backend no disponible (' + e.message + ')';
+      error = 'backend no disponible (' + (e instanceof Error ? e.message : String(e)) + ')';
     }
 
     if (esperaRow && esperaRow.remove) esperaRow.remove();
@@ -406,139 +482,6 @@
         addSystemNote('Acción rechazada: no se ejecutó nada.');
       }
     }
-  }
-
-  // ─── Aprobación humana de acciones de alto riesgo (M-055 · HITL) ───
-  function pedirAprobacion(solicitud) {
-    return new Promise((resolve) => {
-      const modal = document.getElementById('approval-modal');
-      const detalle = document.getElementById('approval-detail');
-      const razones = document.getElementById('approval-reasons');
-      const badge = document.getElementById('approval-risk');
-      const errorEl = document.getElementById('approval-error');
-      const btnOk = document.getElementById('approval-approve-btn');
-      const btnNo = document.getElementById('approval-reject-btn');
-      if (!modal) { resolve(null); return; }
-
-      const riesgo = solicitud.riesgo || {};
-      detalle.textContent = solicitud.resumen || solicitud.tool || '(sin detalle)';
-      badge.textContent = 'riesgo ' + (riesgo.nivel || 'alto');
-      razones.innerHTML = '';
-      (riesgo.razones || []).forEach((r) => {
-        const li = document.createElement('li');
-        li.textContent = r;
-        razones.appendChild(li);
-      });
-      errorEl.hidden = true;
-      modal.classList.remove('hidden');
-      modal.classList.add('flex');
-
-      function cerrar(valor) {
-        modal.classList.add('hidden');
-        modal.classList.remove('flex');
-        btnOk.removeEventListener('click', onOk);
-        btnNo.removeEventListener('click', onNo);
-        resolve(valor);
-      }
-
-      async function onOk() {
-        btnOk.disabled = true;
-        try {
-          const resp = await fetch('/api/shell/aprobar', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              token: solicitud.token, tool: solicitud.tool, args: solicitud.args || {},
-            }),
-          });
-          const data = await resp.json().catch(() => ({}));
-          if (!resp.ok || !data.aprobado) {
-            errorEl.textContent = 'No se pudo aprobar: ' + (data.motivo || data.error || ('HTTP ' + resp.status));
-            errorEl.hidden = false;
-            return;
-          }
-          cerrar(solicitud.token);
-        } catch (e) {
-          errorEl.textContent = 'Backend local no disponible';
-          errorEl.hidden = false;
-        } finally {
-          btnOk.disabled = false;
-        }
-      }
-
-      function onNo() { cerrar(null); }
-
-      btnOk.addEventListener('click', onOk);
-      btnNo.addEventListener('click', onNo);
-    });
-  }
-
-  // ─── Aprobación de un PLAN completo (M-057/M-061) ───
-  // Distinto de pedirAprobacion(): aquí se listan todos los pasos propuestos
-  // y el "tool" firmado por el backend es literalmente "_plan".
-  function pedirAprobacionPlan(plan, solicitud) {
-    return new Promise((resolve) => {
-      const modal = document.getElementById('plan-modal');
-      const pesoTotal = document.getElementById('plan-peso-total');
-      const pasosEl = document.getElementById('plan-pasos');
-      const errorEl = document.getElementById('plan-error');
-      const btnOk = document.getElementById('plan-approve-btn');
-      const btnNo = document.getElementById('plan-reject-btn');
-      if (!modal || !plan) { resolve(null); return; }
-
-      const pasos = plan.pasos || [];
-      pesoTotal.textContent = String(plan.peso_total ?? '—');
-      pasosEl.innerHTML = '';
-      pasos.forEach((p) => {
-        const li = document.createElement('li');
-        li.textContent = `${p.tool} (peso ${p.peso}) — ${p.justificacion || 'sin justificación'}`;
-        pasosEl.appendChild(li);
-      });
-      errorEl.hidden = true;
-      modal.classList.remove('hidden');
-      modal.classList.add('flex');
-
-      function cerrar(valor) {
-        modal.classList.add('hidden');
-        modal.classList.remove('flex');
-        btnOk.removeEventListener('click', onOk);
-        btnNo.removeEventListener('click', onNo);
-        resolve(valor);
-      }
-
-      async function onOk() {
-        btnOk.disabled = true;
-        try {
-          const pasosReducidos = pasos.map((p) => ({
-            tool: p.tool, args: p.args || {}, justificacion: p.justificacion || '',
-          }));
-          const resp = await fetch('/api/shell/aprobar', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              token: solicitud.token, tool: '_plan', args: { pasos: pasosReducidos },
-            }),
-          });
-          const data = await resp.json().catch(() => ({}));
-          if (!resp.ok || !data.aprobado) {
-            errorEl.textContent = 'No se pudo aprobar: ' + (data.motivo || data.error || ('HTTP ' + resp.status));
-            errorEl.hidden = false;
-            return;
-          }
-          cerrar(solicitud.token);
-        } catch (e) {
-          errorEl.textContent = 'Backend local no disponible';
-          errorEl.hidden = false;
-        } finally {
-          btnOk.disabled = false;
-        }
-      }
-
-      function onNo() { cerrar(null); }
-
-      btnOk.addEventListener('click', onOk);
-      btnNo.addEventListener('click', onNo);
-    });
   }
 
   // ─── Panel Laboratorio (Cowork) ───
@@ -703,103 +646,166 @@
     }
   }
 
+  // ─── Aprobación humana de acciones de alto riesgo (M-055 · HITL) ───
+  function pedirAprobacion(solicitud) {
+    // Devuelve el token si el doctor aprueba, o null si rechaza. Nada se
+    // ejecuta mientras esta promesa no resuelva con un token.
+    return new Promise((resolve) => {
+      const modal = document.getElementById('approval-modal');
+      const detalle = document.getElementById('approval-detail');
+      const razones = document.getElementById('approval-reasons');
+      const badge = document.getElementById('approval-risk');
+      const errorEl = document.getElementById('approval-error');
+      const btnOk = /** @type {HTMLButtonElement} */ (document.getElementById('approval-approve-btn'));
+      const btnNo = /** @type {HTMLButtonElement} */ (document.getElementById('approval-reject-btn'));
+      if (!modal) { resolve(null); return; }
+
+      const riesgo = solicitud.riesgo || {};
+      detalle.textContent = solicitud.resumen || solicitud.tool || '(sin detalle)';
+      badge.textContent = 'riesgo ' + (riesgo.nivel || 'alto');
+      razones.innerHTML = '';
+      (riesgo.razones || []).forEach((r) => {
+        const li = document.createElement('li');
+        li.textContent = r;
+        razones.appendChild(li);
+      });
+      errorEl.hidden = true;
+      modal.classList.remove('hidden');
+      modal.classList.add('flex');
+
+      function cerrar(valor) {
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
+        btnOk.removeEventListener('click', onOk);
+        btnNo.removeEventListener('click', onNo);
+        resolve(valor);
+      }
+
+      async function onOk() {
+        btnOk.disabled = true;
+        try {
+          const resp = await fetch('/api/shell/aprobar', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              token: solicitud.token, tool: solicitud.tool, args: solicitud.args || {},
+            }),
+          });
+          const data = await resp.json().catch(() => ({}));
+          if (!resp.ok || !data.aprobado) {
+            // Fail-closed: si el backend no confirma, no se aprueba nada.
+            errorEl.textContent = 'No se pudo aprobar: ' + (data.motivo || data.error || ('HTTP ' + resp.status));
+            errorEl.hidden = false;
+            return;
+          }
+          cerrar(solicitud.token);
+        } catch (e) {
+          errorEl.textContent = 'Backend local no disponible';
+          errorEl.hidden = false;
+        } finally {
+          btnOk.disabled = false;
+        }
+      }
+
+      function onNo() { cerrar(null); }
+
+      btnOk.addEventListener('click', onOk);
+      btnNo.addEventListener('click', onNo);
+    });
+  }
+
+  // ─── Aprobación de un PLAN completo (M-057/M-061) ───
+  // Distinto de pedirAprobacion(): aquí se listan todos los pasos propuestos
+  // y el "tool" firmado por el backend es literalmente "_plan" (ver
+  // core/modo_plan.py::crear_solicitud_plan). Devuelve el token si el doctor
+  // aprueba, o null si rechaza.
+  function pedirAprobacionPlan(plan, solicitud) {
+    return new Promise((resolve) => {
+      const modal = document.getElementById('plan-modal');
+      const pesoTotal = document.getElementById('plan-peso-total');
+      const pasosEl = document.getElementById('plan-pasos');
+      const errorEl = document.getElementById('plan-error');
+      const btnOk = /** @type {HTMLButtonElement} */ (document.getElementById('plan-approve-btn'));
+      const btnNo = /** @type {HTMLButtonElement} */ (document.getElementById('plan-reject-btn'));
+      if (!modal || !plan) { resolve(null); return; }
+
+      const pasos = plan.pasos || [];
+      pesoTotal.textContent = String(plan.peso_total ?? '—');
+      pasosEl.innerHTML = '';
+      pasos.forEach((p) => {
+        const li = document.createElement('li');
+        li.textContent = `${p.tool} (peso ${p.peso}) — ${p.justificacion || 'sin justificación'}`;
+        pasosEl.appendChild(li);
+      });
+      errorEl.hidden = true;
+      modal.classList.remove('hidden');
+      modal.classList.add('flex');
+
+      function cerrar(valor) {
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
+        btnOk.removeEventListener('click', onOk);
+        btnNo.removeEventListener('click', onNo);
+        resolve(valor);
+      }
+
+      async function onOk() {
+        btnOk.disabled = true;
+        try {
+          // Reconstruye EXACTAMENTE la forma reducida que el backend firmó
+          // (core/modo_plan.py::_reducir): tool/args/justificacion, sin peso.
+          const pasosReducidos = pasos.map((p) => ({
+            tool: p.tool, args: p.args || {}, justificacion: p.justificacion || '',
+          }));
+          const resp = await fetch('/api/shell/aprobar', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              token: solicitud.token, tool: '_plan', args: { pasos: pasosReducidos },
+            }),
+          });
+          const data = await resp.json().catch(() => ({}));
+          if (!resp.ok || !data.aprobado) {
+            errorEl.textContent = 'No se pudo aprobar: ' + (data.motivo || data.error || ('HTTP ' + resp.status));
+            errorEl.hidden = false;
+            return;
+          }
+          cerrar(solicitud.token);
+        } catch (e) {
+          errorEl.textContent = 'Backend local no disponible';
+          errorEl.hidden = false;
+        } finally {
+          btnOk.disabled = false;
+        }
+      }
+
+      function onNo() { cerrar(null); }
+
+      btnOk.addEventListener('click', onOk);
+      btnNo.addEventListener('click', onNo);
+    });
+  }
+
   async function logout() {
     try { await fetch('/api/logout', { method: 'POST' }); } catch (e) { /* local */ }
     state.sesion = { autenticado: false };
     await cargarSesion();
   }
 
-  // ─── Señal de versión / auto-update (M-052 · D078) ───
+  // ─── Señal de versión / auto-update (M-052) ───
   async function cargarVersion() {
     try {
       const resp = await fetch('/api/version', { cache: 'no-cache' });
       const v = await resp.json().catch(() => ({}));
       if (v && v.ok && v.hay_actualizacion) {
-        state.update.version = v.disponible || '';
         els.updateText.textContent = 'Nueva versión · v' + v.disponible + ' (tienes v' + v.actual + ')';
         els.updateLink.href = v.url_windows || '#';
-        // D078 · el botón "Actualizar ahora" solo se muestra si el release
-        // trae el kill-switch encendido (L10; v.auto_update).
-        els.updateNowBtn.hidden = !(v.auto_update === true);
         els.updateBanner.hidden = false;
-        if (state.update.fase === 'aplicando') pintarProgresoUpdate(100, 'Actualización lista, reiniciando…');
       } else {
         els.updateBanner.hidden = true;
       }
     } catch (e) {
       els.updateBanner.hidden = true;
-    }
-  }
-
-  // ─── Auto-update (D078): confirmación → descarga → reinicio ───
-  function abrirConfirmacionActualizar() {
-    els.updateModalVersion.textContent = 'v' + (state.update.version || '');
-    els.updateModal.classList.remove('hidden');
-    els.updateModal.classList.add('flex');
-  }
-
-  function cerrarConfirmacionActualizar() {
-    els.updateModal.classList.add('hidden');
-    els.updateModal.classList.remove('flex');
-  }
-
-  function pintarProgresoUpdate(pct, texto) {
-    els.updateProgressWrap.hidden = false;
-    els.updateProgressBar.style.width = Math.max(0, Math.min(100, pct)) + '%';
-    if (texto) els.updateProgressText.textContent = texto;
-  }
-
-  async function iniciarActualizacion() {
-    els.updateConfirmBtn.disabled = true;
-    els.updateCancelBtn.disabled = true;
-    cerrarConfirmacionActualizar();
-    els.updateNowBtn.hidden = true;
-    try {
-      const resp = await fetch('/api/shell/actualizar', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-      });
-      const data = await resp.json().catch(() => ({}));
-      if (!resp.ok || !data.ok) {
-        pintarProgresoUpdate(0, 'No se pudo iniciar: ' + (data.error || ('HTTP ' + resp.status)));
-        els.updateNowBtn.hidden = false;
-        return;
-      }
-      state.update.fase = data.fase || 'descargando';
-      pintarProgresoUpdate(data.progreso || 0, data.fase === 'aplicando' ? 'Actualización lista, reiniciando…' : 'Descargando…');
-      pollProgreso();
-    } catch (e) {
-      pintarProgresoUpdate(0, 'Backend local no disponible');
-      els.updateNowBtn.hidden = false;
-    } finally {
-      els.updateConfirmBtn.disabled = false;
-      els.updateCancelBtn.disabled = false;
-    }
-  }
-
-  function pollProgreso() {
-    if (state.update.pollTimer) return;
-    state.update.pollTimer = setInterval(async () => {
-      try {
-        const resp = await fetch('/api/shell/actualizar/progreso', { cache: 'no-cache' });
-        const d = await resp.json().catch(() => ({}));
-        state.update.fase = d.fase || state.update.fase;
-        if (d.fase === 'error') {
-          pintarProgresoUpdate(0, 'Falló: ' + (d.detalle || 'error desconocido'));
-          els.updateNowBtn.hidden = false;
-          stopPoll();
-          return;
-        }
-        pintarProgresoUpdate(d.progreso || 0, d.fase === 'aplicando' ? 'Actualización lista, reiniciando…' : 'Descargando…');
-        if (d.fase === 'aplicando') stopPoll();
-      } catch (e) { /* el backend se cerrará al reiniciar; no bloquear */ }
-    }, 1000);
-  }
-
-  function stopPoll() {
-    if (state.update.pollTimer) {
-      clearInterval(state.update.pollTimer);
-      state.update.pollTimer = null;
     }
   }
 

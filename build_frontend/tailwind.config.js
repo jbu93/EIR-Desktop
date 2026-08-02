@@ -79,6 +79,9 @@ module.exports = {
         "input-height": "48px",
       },
       fontFamily: {
+        // §UI-2026-08-02 · datos tecnicos (status, metadatos STL, footer).
+        // Vendorizado en vendor/fonts/jetbrains-mono-latin*.woff2.
+        mono: ["JetBrains Mono", "ui-monospace", "monospace"],
         "body-md": ["Nunito Sans", "sans-serif"],
         "headline-lg": ["Nunito Sans", "sans-serif"],
         "label-caps": ["Nunito Sans", "sans-serif"],

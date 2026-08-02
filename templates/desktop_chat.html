@@ -27,13 +27,16 @@
   <div class="flex flex-1 overflow-hidden">
     <!-- ═══════════════ SIDEBAR ═══════════════ -->
     <aside class="w-sidebar-width shrink-0 bg-surface-container-low border-r border-outline-variant flex flex-col overflow-hidden" role="navigation" aria-label="Historial y navegación">
-      <div class="p-margin flex items-center gap-3 border-b border-outline-variant">
-        <div class="w-8 h-8 rounded-lg bg-primary flex items-center justify-center shrink-0">
-          <span class="material-symbols-outlined fill-icon text-on-primary text-[20px]">dentistry</span>
+      <div class="px-margin py-3 flex items-center gap-3 border-b border-outline-variant">
+        <!-- §UI-2026-08-02 · icono de marca real (orb oficial), no un cuadrado
+             generico Material Symbols. Mismo tratamiento que .brand-orb en la
+             web (atelier_shell.css), adaptado al acento verde del desktop. -->
+        <div class="brand-orb-desktop shrink-0">
+          <img src="/static_desktop/img/eir_orb_oficial.png" alt="EIR DR.">
         </div>
         <div class="flex flex-col leading-tight min-w-0">
           <span class="font-bold text-lg text-primary tracking-tight truncate">EIR&nbsp;DR.</span>
-          <span class="font-label-caps text-[10px] text-on-surface-variant opacity-70">DESKTOP · v1.1.0</span>
+          <span class="font-mono text-[10px] text-on-surface-variant opacity-70 tracking-wide">DESKTOP · SANDBOX v1.0.0</span>
         </div>
       </div>
 
@@ -51,7 +54,7 @@
       <div class="p-margin border-t border-outline-variant flex flex-col gap-3">
         <div class="flex items-center gap-2" id="connection-status">
           <span class="w-2 h-2 rounded-full bg-error status-dot" id="status-dot" aria-hidden="true"></span>
-          <span class="font-label-caps text-[10px] text-on-surface-variant tracking-wide" id="status-text">Verificando conexión…</span>
+          <span class="font-mono text-[10px] text-on-surface-variant tracking-wide" id="status-text">Verificando conexión…</span>
         </div>
 
         <!-- M-052 · sesión cloud EIR (inferencia) + señal de versión -->
@@ -66,22 +69,9 @@
             <p class="text-[10px] text-on-surface-variant" id="session-credito"></p>
             <button type="button" id="session-logout-btn" class="text-[11px] text-on-surface-variant hover:text-error text-left transition-colors">Cerrar sesión</button>
           </div>
-          <div id="update-banner" class="rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 flex flex-col gap-2" hidden>
-            <div class="flex items-center justify-between gap-2">
-              <span class="font-label-caps text-[10px] text-primary font-bold" id="update-text"></span>
-              <a id="update-link" href="#" target="_blank" rel="noopener" class="font-label-caps text-[10px] text-primary underline shrink-0">Descargar</a>
-            </div>
-            <div class="flex flex-col gap-1.5">
-              <button type="button" id="update-now-btn" class="w-full bg-primary text-on-primary text-[11px] font-bold px-3 py-1.5 rounded-lg hover:opacity-90 transition-opacity">
-                Actualizar ahora
-              </button>
-              <div id="update-progress-wrap" class="flex flex-col gap-1" hidden>
-                <div class="h-1.5 w-full bg-primary/20 rounded-full overflow-hidden">
-                  <div id="update-progress-bar" class="h-full bg-primary rounded-full transition-all" style="width:0%"></div>
-                </div>
-                <span class="font-label-caps text-[9px] text-on-surface-variant" id="update-progress-text">Descargando…</span>
-              </div>
-            </div>
+          <div id="update-banner" class="rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 flex items-center justify-between gap-2" hidden>
+            <span class="font-label-caps text-[10px] text-primary font-bold" id="update-text"></span>
+            <a id="update-link" href="#" target="_blank" rel="noopener" class="font-label-caps text-[10px] text-primary underline shrink-0">Descargar</a>
           </div>
         </div>
 
@@ -117,7 +107,7 @@
       </header>
 
       <!-- Selector de rol (siempre visible, controla qué "personalidad" responde) -->
-      <div class="flex justify-center py-6 shrink-0">
+      <div class="flex justify-center py-3 shrink-0">
         <div class="flex gap-2 p-1 bg-surface-container rounded-full border border-outline-variant" id="role-selector" role="tablist" aria-label="Rol clínico activo">
           <button type="button" data-role="odontologo" class="role-btn active px-5 py-2 rounded-full font-label-caps text-label-caps flex items-center gap-2 transition-all">
             <span class="material-symbols-outlined text-[16px]">stethoscope</span> ODONTÓLOGO
@@ -140,8 +130,11 @@
           <div class="max-w-4xl mx-auto w-full">
             <div class="space-y-10 py-6" id="messages">
               <div class="text-center py-16 text-on-surface-variant" id="welcome-message">
-                <div class="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-4">
-                  <span class="material-symbols-outlined fill-icon text-primary text-[32px]">smart_toy</span>
+                <!-- §UI-2026-08-02 · mascota real de EIR DR. (el diente-avatar), no
+                     un robot generico Material Symbols. Mismo tratamiento .welcome-orb
+                     de la web (atelier_shell.css), acento verde del desktop. -->
+                <div class="welcome-orb-desktop mx-auto mb-4">
+                  <img src="/static_desktop/img/eir_dr_avatar.jpeg" alt="EIR DR.">
                 </div>
                 <h2 class="text-headline-sm font-bold text-on-surface mb-2">Bienvenido a EIR DR. Desktop</h2>
                 <p class="max-w-md mx-auto text-body-sm">Selecciona un rol arriba y escribe tu consulta. Funciona con tools locales y honestidad agéntica: si algo falla, EIR lo dice.</p>
@@ -150,14 +143,23 @@
           </div>
         </div>
 
-        <!-- Input fijo -->
-        <div class="fixed bottom-6 right-6 max-w-4xl mx-auto z-40" style="left: calc(280px + 24px);">
-          <form id="chat-form" class="glass-panel border border-outline-variant p-2 rounded-3xl flex items-end gap-2 organic-shadow-lg ring-1 ring-primary/5 focus-within:ring-2 focus-within:ring-primary/20 transition-all">
-            <textarea id="chat-input" class="w-full bg-transparent border-none focus:ring-0 resize-none py-3 px-3 font-body-md text-on-surface placeholder:text-on-surface-variant/50" placeholder="Escribe tu consulta al rol activo…" rows="1" aria-label="Consulta clínica"></textarea>
-            <button type="submit" id="send-btn" class="bg-primary text-on-primary p-3 rounded-2xl hover:opacity-90 transition-all flex items-center justify-center organic-shadow shrink-0" aria-label="Enviar">
-              <span class="material-symbols-outlined fill-icon text-[20px]">send</span>
-            </button>
-          </form>
+        <!-- Input: sticky dentro del section, no fixed con left calc(280px+24px)
+             -- eso se rompía si el sidebar cambiaba de ancho (hallazgo real). -->
+        <div class="sticky bottom-0 px-margin py-4 bg-gradient-to-t from-background via-background/95 to-transparent z-40">
+          <div class="max-w-4xl mx-auto">
+            <form id="chat-form" class="glass-panel border border-outline-variant p-2 rounded-xl flex items-end gap-2 organic-shadow-lg ring-1 ring-primary/5 focus-within:ring-2 focus-within:ring-primary/20 transition-all">
+              <!-- Dictado por voz: Web Speech API (igual que la web), sin gastar
+                   la cuota/API de EIR. Se oculta sola si el motor de la ventana
+                   nativa no la soporta (bindMicDictation en desktop_app.js). -->
+              <button type="button" id="mic-btn" class="p-3 rounded-xl hover:bg-surface-container-high transition-all flex items-center justify-center shrink-0 text-on-surface-variant" aria-label="Dictar por voz" title="Dictar por voz (sin gastar la cuota de EIR)">
+                <span class="material-symbols-outlined text-[20px]">mic</span>
+              </button>
+              <textarea id="chat-input" class="w-full bg-transparent border-none focus:ring-0 resize-none py-3 px-3 font-body-md text-on-surface placeholder:text-on-surface-variant/50" placeholder="Escribe tu consulta al rol activo…" rows="1" aria-label="Consulta clínica"></textarea>
+              <button type="submit" id="send-btn" class="btn-primary p-3 rounded-xl shrink-0 flex items-center justify-center" aria-label="Enviar">
+                <span class="material-symbols-outlined fill-icon text-[20px]">send</span>
+              </button>
+            </form>
+          </div>
         </div>
       </section>
 
@@ -165,7 +167,7 @@
       <section id="panel-cowork" class="mode-panel flex-1 overflow-hidden flex-col" aria-label="Cowork - EIR trabaja en tu consultorio" hidden>
         <!-- Variante genérica (roles sin panel especializado aún) -->
         <div id="cowork-generic" class="flex-1 flex flex-col items-center justify-center text-center px-10 text-on-surface-variant">
-          <span class="material-symbols-outlined text-[64px] opacity-30 mb-4">handyman</span>
+          <span class="material-symbols-outlined text-[64px] opacity-30 mb-4">dentistry</span>
           <h3 class="text-headline-sm font-bold text-on-surface mb-2">Modo Cowork</h3>
           <p class="max-w-md text-body-sm">EIR actuará sobre tu entorno local para este rol (archivos, agenda, contenido) en la Fase 2. Hoy este panel es un adelanto visual, no un mock con datos inventados.</p>
         </div>
@@ -187,7 +189,7 @@
                   <span class="material-symbols-outlined text-primary text-[20px]">view_in_ar</span>
                   <div class="flex flex-col leading-tight">
                     <span class="font-label-sm font-bold text-on-surface" id="stl-filename">Visor 3D de STL · local</span>
-                    <span class="font-tech-log text-[10px] text-on-surface-variant opacity-70">100% offline · la malla no sale del equipo · L6</span>
+                    <span class="font-mono text-[10px] text-on-surface-variant opacity-70">100% offline · la malla no sale del equipo · L6</span>
                   </div>
                 </div>
                 <div class="flex items-center gap-2">
@@ -216,10 +218,10 @@
               </div>
               <!-- Panel de metadatos reales -->
               <div class="border-t border-outline-variant bg-surface-container px-4 py-3 shrink-0 grid grid-cols-4 gap-4" id="stl-meta">
-                <div class="flex flex-col"><span class="font-tech-log text-[9px] uppercase tracking-widest text-on-surface-variant opacity-60">Archivo</span><span class="font-label-sm font-bold text-on-surface" data-k="archivo">—</span></div>
-                <div class="flex flex-col"><span class="font-tech-log text-[9px] uppercase tracking-widest text-on-surface-variant opacity-60">Caras</span><span class="font-label-sm font-bold text-on-surface" data-k="n_caras">—</span></div>
-                <div class="flex flex-col"><span class="font-tech-log text-[9px] uppercase tracking-widest text-on-surface-variant opacity-60">Vértices</span><span class="font-label-sm font-bold text-on-surface" data-k="n_vertices">—</span></div>
-                <div class="flex flex-col"><span class="font-tech-log text-[9px] uppercase tracking-widest text-on-surface-variant opacity-60">Tamaño (mm)</span><span class="font-label-sm font-bold text-on-surface" data-k="tamano_mm">—</span></div>
+                <div class="flex flex-col"><span class="font-mono text-[9px] uppercase tracking-widest text-on-surface-variant opacity-60">Archivo</span><span class="font-label-sm font-bold text-on-surface font-mono" data-k="archivo">—</span></div>
+                <div class="flex flex-col"><span class="font-mono text-[9px] uppercase tracking-widest text-on-surface-variant opacity-60">Caras</span><span class="font-label-sm font-bold text-on-surface font-mono" data-k="n_caras">—</span></div>
+                <div class="flex flex-col"><span class="font-mono text-[9px] uppercase tracking-widest text-on-surface-variant opacity-60">Vértices</span><span class="font-label-sm font-bold text-on-surface font-mono" data-k="n_vertices">—</span></div>
+                <div class="flex flex-col"><span class="font-mono text-[9px] uppercase tracking-widest text-on-surface-variant opacity-60">Tamaño (mm)</span><span class="font-label-sm font-bold text-on-surface font-mono" data-k="tamano_mm">—</span></div>
               </div>
             </div>
             <!-- Panel lateral: chat/traza real del rol laboratorio -->
@@ -227,7 +229,7 @@
               <div class="flex-1 bg-surface-container-low border border-outline-variant rounded-xl flex flex-col overflow-hidden soft-shadow">
                 <div class="px-6 py-4 border-b border-outline-variant bg-surface-container flex justify-between items-center shrink-0">
                   <h2 class="font-label-sm text-primary uppercase tracking-widest">Lab Agent — traza real</h2>
-                  <span class="material-symbols-outlined text-[20px] text-primary">psychology</span>
+                  <span class="material-symbols-outlined text-[20px] text-primary">biotech</span>
                 </div>
                 <div class="flex-1 overflow-y-auto thought-stream p-6 space-y-4 text-body-sm" id="lab-thought-stream">
                   <p class="text-on-surface-variant text-[12px]">Escribe una consulta abajo (ej. "resume la ficha CAD de la prótesis #442") para ver aquí los pasos reales del agente.</p>
@@ -244,13 +246,16 @@
 
       <!-- ─── MODO AUTOMATIZACIONES ─── -->
       <section id="panel-auto" class="mode-panel flex-1 flex flex-col items-center justify-center text-center px-10 text-on-surface-variant" aria-label="Automatizaciones del consultorio" hidden>
-        <span class="material-symbols-outlined text-[64px] opacity-30 mb-4">auto_awesome</span>
+        <!-- §UI-2026-08-02 · antes auto_awesome (chispas genericas de Google AI,
+             sin relacion con odontologia). schedule = cronogramas/recetas locales,
+             consistente con lo que este panel promete. -->
+        <span class="material-symbols-outlined text-[64px] opacity-30 mb-4">schedule</span>
         <h3 class="text-headline-sm font-bold text-on-surface mb-2">Automatizaciones</h3>
         <p class="max-w-md text-body-sm">Recetas locales (reportes, pedidos CAD, cronogramas) — requiere Fase 3 (editor + runner). Todavía no implementado.</p>
       </section>
 
-      <!-- Traza agéntica del modo Chat (colapsable) -->
-      <details id="trace-panel" class="fixed bottom-24 right-6 max-w-4xl mx-auto z-30 bg-surface-container-low border border-outline-variant rounded-2xl organic-shadow overflow-hidden" style="left: calc(280px + 24px);" hidden>
+      <!-- Traza agéntica del modo Chat (colapsable). Sticky, no fixed con left calc. -->
+      <details id="trace-panel" class="sticky bottom-20 mx-margin z-30 bg-surface-container-low border border-outline-variant rounded-2xl organic-shadow overflow-hidden" hidden>
         <summary class="flex items-center gap-3 p-4 cursor-pointer select-none">
           <span class="material-symbols-outlined text-primary text-[18px]">terminal</span>
           <span class="font-label-caps text-[11px] text-primary font-black">PROCESO DE ANÁLISIS · traza real</span>
@@ -264,17 +269,21 @@
   <!-- Footer -->
   <footer class="h-8 shrink-0 flex justify-between items-center px-margin bg-surface-container-low border-t border-outline-variant">
     <div class="flex items-center gap-4">
-      <span class="font-tech-log text-[10px] text-on-surface-variant tracking-widest">EIR DR. DESKTOP · SANDBOX</span>
+      <span class="font-mono text-[10px] text-on-surface-variant tracking-widest">EIR DR. DESKTOP · SANDBOX</span>
       <div class="h-4 w-px bg-outline-variant"></div>
       <span class="font-label-caps text-[10px] text-primary" id="footer-role-label">ODONTÓLOGO</span>
     </div>
     <div class="flex items-center gap-4">
-      <span class="font-label-caps text-[10px] text-on-surface-variant opacity-60">NÚCLEO: LOCAL + CLOUD EIR</span>
+      <span class="font-mono text-[10px] text-on-surface-variant opacity-60">NÚCLEO: LOCAL + CLOUD (GROQ→NVIDIA→GOOGLE)</span>
     </div>
   </footer>
 
-  <!-- M-052 · Modal de sesión cloud EIR DR. -->
-  <div id="login-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/50" aria-hidden="true">
+  <!-- M-052 · Modal de sesión cloud EIR DR.
+       §UI-2026-08-02 · BUG REAL: le faltaba la clase `flex`. Tailwind necesita
+       display:flex para que items-center/justify-center centren algo; sin ella,
+       al quitar `hidden` el div cae a display:block y la tarjeta queda pegada
+       arriba-izquierda (el bug que reportó el Soberano en captura). -->
+  <div id="login-modal" class="fixed inset-0 z-50 hidden flex items-center justify-center bg-black/50" aria-hidden="true">
     <div class="bg-surface-container-lowest border border-outline-variant rounded-2xl p-6 w-[340px] soft-shadow">
       <h3 class="text-headline-sm font-bold text-on-surface mb-1">Iniciar sesión en EIR DR.</h3>
       <p class="text-[12px] text-on-surface-variant mb-4 leading-snug">Con tu cuenta de eirdr.com activas la inferencia cloud. Tu contraseña se envía cifrada por HTTPS y nunca se guarda en este equipo.</p>
@@ -285,8 +294,8 @@
                class="w-full border border-outline-variant rounded-lg px-3 py-2 text-body-sm outline-none focus:border-primary">
         <p id="login-error" class="text-[12px] text-error font-bold" hidden></p>
         <div class="flex gap-2">
-          <button type="submit" id="login-submit-btn" class="flex-1 bg-primary text-on-primary text-[12px] font-bold px-3 py-2.5 rounded-lg hover:opacity-90 transition-opacity">Entrar</button>
-          <button type="button" id="login-cancel-btn" class="flex-1 bg-surface-container text-on-surface-variant text-[12px] font-bold px-3 py-2.5 rounded-lg hover:opacity-80 transition-opacity">Cancelar</button>
+          <button type="submit" id="login-submit-btn" class="btn-primary flex-1 text-[12px] px-3 py-2.5">Entrar</button>
+          <button type="button" id="login-cancel-btn" class="btn-ghost flex-1 text-[12px] px-3 py-2.5">Cancelar</button>
         </div>
       </form>
       <a href="https://eirdr.com/atelier" target="_blank" rel="noopener"
@@ -296,40 +305,25 @@
     </div>
   </div>
 
-  <!-- D078 · Confirmación de actualización (reemplazo del .exe) -->
-  <div id="update-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/50" aria-hidden="true">
-    <div class="bg-surface-container-lowest border border-outline-variant rounded-2xl p-6 w-[340px] soft-shadow">
-      <h3 class="text-headline-sm font-bold text-on-surface mb-1">Actualizar EIR DR. Desktop</h3>
-      <p class="text-[12px] text-on-surface-variant mb-4 leading-snug">
-        Se descargará la versión <span id="update-modal-version" class="font-bold text-primary"></span> y la
-        aplicación se reiniciará sola al terminar. Tu sesión e historial local se conservan.
-      </p>
-      <div class="flex gap-2">
-        <button type="button" id="update-confirm-btn" class="flex-1 bg-primary text-on-primary text-[12px] font-bold px-3 py-2.5 rounded-lg hover:opacity-90 transition-opacity">Actualizar</button>
-        <button type="button" id="update-cancel-btn" class="flex-1 bg-surface-container text-on-surface-variant text-[12px] font-bold px-3 py-2.5 rounded-lg hover:opacity-80 transition-opacity">Cancelar</button>
-      </div>
-    </div>
-  </div>
-
   <!-- M-055 · Aprobación humana de una acción de alto riesgo (HITL).
        Se muestra el comando/ruta LITERAL que se va a ejecutar: el doctor
        aprueba el hecho, no una descripción amable del hecho. -->
-  <div id="approval-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/50" aria-hidden="true">
+  <div id="approval-modal" class="fixed inset-0 z-50 hidden flex items-center justify-center bg-black/50" aria-hidden="true">
     <div class="bg-surface-container-lowest border border-outline-variant rounded-2xl p-6 w-[440px] soft-shadow">
       <div class="flex items-center gap-2 mb-1">
-        <span id="approval-risk" class="text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full bg-error/10 text-error">riesgo alto</span>
+        <span id="approval-risk" class="font-mono text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full bg-error/10 text-error">riesgo alto</span>
         <h3 class="text-headline-sm font-bold text-on-surface">EIR pide tu permiso</h3>
       </div>
       <p class="text-[12px] text-on-surface-variant mb-3 leading-snug">
         Esta acción no se ejecuta sin tu aprobación. Esto es exactamente lo que se
         va a hacer:
       </p>
-      <pre id="approval-detail" class="text-[12px] font-mono bg-surface-container border border-outline-variant rounded-lg px-3 py-2.5 mb-3 whitespace-pre-wrap break-all text-on-surface"></pre>
+      <pre id="approval-detail" class="font-mono text-[12px] bg-surface-container border border-outline-variant rounded-lg px-3 py-2.5 mb-3 whitespace-pre-wrap break-all text-on-surface"></pre>
       <ul id="approval-reasons" class="text-[11px] text-on-surface-variant list-disc pl-4 mb-4 flex flex-col gap-0.5"></ul>
       <p id="approval-error" class="text-[12px] text-error font-bold mb-2" hidden></p>
       <div class="flex gap-2">
-        <button type="button" id="approval-approve-btn" class="flex-1 bg-primary text-on-primary text-[12px] font-bold px-3 py-2.5 rounded-lg hover:opacity-90 transition-opacity">Aprobar y ejecutar</button>
-        <button type="button" id="approval-reject-btn" class="flex-1 bg-surface-container text-on-surface-variant text-[12px] font-bold px-3 py-2.5 rounded-lg hover:opacity-80 transition-opacity">Rechazar</button>
+        <button type="button" id="approval-approve-btn" class="btn-primary flex-1 text-[12px] px-3 py-2.5">Aprobar y ejecutar</button>
+        <button type="button" id="approval-reject-btn" class="btn-ghost flex-1 text-[12px] px-3 py-2.5">Rechazar</button>
       </div>
       <p class="text-[10px] text-on-surface-variant mt-3 leading-snug">
         Esta aprobación vale una sola vez y solo para esta acción exacta.
@@ -338,21 +332,22 @@
   </div>
 
   <!-- M-057/M-061 · Aprobación del PLAN completo (pasos + pesos) antes de que
-       el paradigma "auto" ejecute nada. -->
-  <div id="plan-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/50" aria-hidden="true">
+       el paradigma "auto" ejecute nada. Distinto del modal de una sola tool
+       (approval-modal): aquí se listan todos los pasos propuestos. -->
+  <div id="plan-modal" class="fixed inset-0 z-50 hidden flex items-center justify-center bg-black/50" aria-hidden="true">
     <div class="bg-surface-container-lowest border border-outline-variant rounded-2xl p-6 w-[460px] soft-shadow">
       <div class="flex items-center gap-2 mb-1">
-        <span class="text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full bg-primary/10 text-primary">plan propuesto</span>
+        <span class="font-mono text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full bg-primary/10 text-primary">plan propuesto</span>
         <h3 class="text-headline-sm font-bold text-on-surface">EIR propone estos pasos</h3>
       </div>
       <p class="text-[12px] text-on-surface-variant mb-3 leading-snug">
-        Nada se ejecuta hasta que apruebes el plan completo. Peso total: <b id="plan-peso-total">—</b>.
+        Nada se ejecuta hasta que apruebes el plan completo. Peso total: <b id="plan-peso-total" class="font-mono">—</b>.
       </p>
-      <ol id="plan-pasos" class="text-[12px] font-mono bg-surface-container border border-outline-variant rounded-lg px-3 py-2.5 mb-3 flex flex-col gap-1.5 max-h-[220px] overflow-y-auto list-decimal pl-6"></ol>
+      <ol id="plan-pasos" class="font-mono text-[12px] bg-surface-container border border-outline-variant rounded-lg px-3 py-2.5 mb-3 flex flex-col gap-1.5 max-h-[220px] overflow-y-auto list-decimal pl-6"></ol>
       <p id="plan-error" class="text-[12px] text-error font-bold mb-2" hidden></p>
       <div class="flex gap-2">
-        <button type="button" id="plan-approve-btn" class="flex-1 bg-primary text-on-primary text-[12px] font-bold px-3 py-2.5 rounded-lg hover:opacity-90 transition-opacity">Aprobar plan y ejecutar</button>
-        <button type="button" id="plan-reject-btn" class="flex-1 bg-surface-container text-on-surface-variant text-[12px] font-bold px-3 py-2.5 rounded-lg hover:opacity-80 transition-opacity">Rechazar</button>
+        <button type="button" id="plan-approve-btn" class="btn-primary flex-1 text-[12px] px-3 py-2.5">Aprobar plan y ejecutar</button>
+        <button type="button" id="plan-reject-btn" class="btn-ghost flex-1 text-[12px] px-3 py-2.5">Rechazar</button>
       </div>
       <p class="text-[10px] text-on-surface-variant mt-3 leading-snug">
         Esta aprobación vale una sola vez y solo para este plan exacto.
