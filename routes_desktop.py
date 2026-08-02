@@ -92,7 +92,15 @@ def sesion_local():
 
 @bp_desktop.get("/api/version")
 def version_local():
-    return jsonify(_mod_actualizador().estado())
+    mod = _mod_actualizador()
+    res = dict(mod.estado())
+    # D097 · si el intento anterior de auto-update falló en silencio (el .bat
+    # corre sin ninguna app viva para escucharlo), este es el único momento
+    # donde se puede avisar: al primer /api/version del arranque siguiente.
+    fallo = mod.consumir_fallo_previo()
+    if fallo:
+        res["actualizacion_fallo_previa"] = fallo
+    return jsonify(res)
 
 
 # ─── D078 · auto-update del .exe (kill-switch L10 + descarga + reinicio) ───

@@ -814,6 +814,18 @@
       const v = await resp.json().catch(() => ({}));
       if (v && v.ok) {
         els.sidebarVersion.textContent = 'v' + v.actual;
+        // D097 · el intento anterior de auto-update pudo fallar sin que hubiera
+        // ninguna app viva para avisar en el momento (el .bat corre desacoplado
+        // y sin consola). Este es el primer arranque después: si hay un aviso
+        // pendiente, se muestra una sola vez y se prioriza sobre el banner normal.
+        if (v.actualizacion_fallo_previa) {
+          const f = v.actualizacion_fallo_previa;
+          els.updateText.textContent = 'La actualización anterior falló (' + f.detalle + '). Sigues en v' + v.actual + '.';
+          els.updateLink.hidden = true;
+          els.updateNowBtn.hidden = true;
+          els.updateBanner.hidden = false;
+          return;
+        }
         if (v.hay_actualizacion) {
           state.update.version = v.disponible || '';
           els.updateText.textContent = 'Nueva versión · v' + v.disponible + ' (tienes v' + v.actual + ')';

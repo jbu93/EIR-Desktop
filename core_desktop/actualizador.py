@@ -37,6 +37,7 @@ _ULTIMO_TS: float = 0.0
 # sin copiar el default defensivo de ejemplos web.
 _DESCARGA_TIMEOUT = 600
 _DIR_TEMPORAL = Path(tempfile.gettempdir()) / "eir_dr_update"
+_MARCADOR_FALLO = _DIR_TEMPORAL / "_eir_dr_update_fallo.txt"
 
 
 def _auto_update_activo() -> bool:
@@ -168,8 +169,20 @@ def generar_script_reemplazo(ruta_nueva: str, exe_actual: str) -> dict:
        un ``timeout`` fijo es una apuesta. Se sondea el bloqueo real
        (``>>file (call )`` falla mientras algo lo tenga tomado).
 
-    3. **Dejar rastro.** ``_eir_dr_update.log`` es el unico sitio donde mirar si
-       esto falla en la maquina de un odontologo, que no tiene consola.
+    3. **Dejar rastro — y NUNCA dejar al doctor sin app.** ``_eir_dr_update.log``
+       es un rastro para diagnóstico, pero no lo lee nadie en el momento: la
+       app que podría mostrarlo ya está muerta desde antes de que este script
+       empiece a intentar nada (``os._exit(0)`` corre justo después de lanzar
+       este .bat, no después de que termine). Descubierto de raíz (D097): si el
+       .exe nunca se libera (90 intentos, ~3 min) o el ``copy`` falla, el script
+       simplemente salía sin relanzar nada — el .exe original queda intacto en
+       disco (nunca se llegó a tocar) pero nadie lo abre. Para el doctor: la app
+       se cierra al hacer clic en Actualizar y **no vuelve nunca, sin ningún
+       aviso**. Por eso ambos caminos de error ahora relanzan el .exe ORIGINAL
+       (intacto, sin actualizar) y dejan un marcador de una sola lectura
+       (``_eir_dr_update_fallo.txt``) que ``consumir_fallo_previo()`` lee y
+       borra en el siguiente arranque — así la próxima sesión SÍ avisa qué
+       pasó, en vez de fallar en silencio.
 
     Detalle menor: se usa ``ping`` como pausa y no ``timeout``, porque
     ``timeout`` lee de la consola y el .bat corre con DETACHED_PROCESS, sin
@@ -183,6 +196,7 @@ def generar_script_reemplazo(ruta_nueva: str, exe_actual: str) -> dict:
         _DIR_TEMPORAL.mkdir(parents=True, exist_ok=True)
         bat = _DIR_TEMPORAL / "_eir_dr_aplicar_update.bat"
         log = _DIR_TEMPORAL / "_eir_dr_update.log"
+        marcador = _MARCADOR_FALLO
         lineas = [
             "@echo off",
             # (1) sin esto el .exe relanzado se cree el hijo ya extraido de la
@@ -201,6 +215,10 @@ def generar_script_reemplazo(ruta_nueva: str, exe_actual: str) -> dict:
             f'2>nul (>>"{exe_actual}" call ) && goto libre',
             "if %N% GEQ 90 (",
             f'  echo [%date% %time%] ERROR: el exe sigue bloqueado tras %N% intentos >> "{log}"',
+            f'  echo exe_bloqueado> "{marcador}"',
+            f'  echo El archivo seguia en uso tras ~3 minutos de intentos>> "{marcador}"',
+            # (3) NUNCA dejar al doctor sin app: relanza el original intacto
+            f'  start "" "{exe_actual}"',
             "  exit /b 2",
             ")",
             "goto esperar",
@@ -210,6 +228,9 @@ def generar_script_reemplazo(ruta_nueva: str, exe_actual: str) -> dict:
             f'copy /y "{ruta_nueva}" "{exe_actual}" >nul 2>&1',
             "if errorlevel 1 (",
             f'  echo [%date% %time%] ERROR: fallo el copy >> "{log}"',
+            f'  echo fallo_copy> "{marcador}"',
+            f'  echo No se pudo copiar el archivo descargado>> "{marcador}"',
+            f'  start "" "{exe_actual}"',
             "  exit /b 1",
             ")",
             f'del /f /q "{ruta_nueva}" >nul 2>&1',
@@ -225,6 +246,32 @@ def generar_script_reemplazo(ruta_nueva: str, exe_actual: str) -> dict:
         return {"ok": False, "motivo": "error_escritura", "detalle": str(e)}
     return {"ok": True, "bat_ruta": str(bat), "exe_actual": exe_actual,
             "log_ruta": str(log)}
+
+
+def consumir_fallo_previo() -> dict | None:
+    """Lee y borra el marcador de un intento de actualización fallido (D097).
+
+    El .bat que aplica el reemplazo corre desacoplado, sin consola y con la
+    app ya cerrada (``os._exit(0)`` corre antes de que el .bat empiece a
+    intentar nada) — si algo sale mal ahí (el .exe nunca se libera, o el copy
+    falla), no hay ninguna app viva para mostrar ese error en el momento. Este
+    marcador es el único rastro, y se consume una sola vez (se borra al
+    leerlo) para que el aviso no se repita en cada arranque siguiente.
+    """
+    if not _MARCADOR_FALLO.exists():
+        return None
+    try:
+        lineas = _MARCADOR_FALLO.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return None
+    finally:
+        try:
+            _MARCADOR_FALLO.unlink(missing_ok=True)
+        except OSError:
+            pass
+    motivo = lineas[0].strip() if lineas else "desconocido"
+    detalle = lineas[1].strip() if len(lineas) > 1 else ""
+    return {"motivo": motivo, "detalle": detalle}
 
 
 def estado(force: bool = False) -> dict:
