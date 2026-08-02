@@ -35,6 +35,12 @@ jobs:
           PYTHONPATH: ${{ github.workspace }}
         run: python -m PyInstaller build_desktop.spec --clean --noconfirm
 
+      - name: Generate checksum
+        shell: pwsh
+        run: |
+          $hash = (Get-FileHash -Algorithm SHA256 -Path dist/EIR_DR_Desktop.exe).Hash.ToLower()
+          "$hash *EIR_DR_Desktop.exe" | Set-Content -Path dist/SHA256SUMS.txt -NoNewline
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
@@ -45,5 +51,7 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/EIR_DR_Desktop.exe
+          files: |
+            dist/EIR_DR_Desktop.exe
+            dist/SHA256SUMS.txt
           fail_on_unmatched_files: true
