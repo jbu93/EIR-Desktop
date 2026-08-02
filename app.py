@@ -128,6 +128,7 @@ def _arrancar_pywebview(app) -> int:
         "EIR DR. Desktop - Sandbox",
         f"http://{HOST}:{PORT}/",
         width=960, height=680,
+        min_size=(720, 540),
     )
     webview.start()
     return 0

@@ -192,6 +192,7 @@
   border-radius: 1.25rem;
   line-height: 1.55;
   font-size: 15px;
+  white-space: pre-wrap;
 }
 .msg-row.usuario .msg-bubble {
   background: #2d5a27;
@@ -247,3 +248,20 @@
 #mic-btn.on svg, #mic-btn.on .material-symbols-outlined { animation: mic-pulse 1.4s ease-in-out infinite; }
 @keyframes mic-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .55; } }
 .history-item .h-time { font-size: 9px; color: #42493e; opacity: .7; }
+
+/* ─── Responsive breakpoints (D096 · F3) ───
+   Mismo patrón que atelier_shell.css: 1024px y 640px.
+   Colapsa sidebar y reduce padding en pantallas pequeñas. */
+@media (max-width: 1024px) {
+  aside[role="navigation"] { width: 0 !important; min-width: 0 !important; overflow: hidden; }
+  .msg-bubble { max-width: 90%; }
+}
+
+@media (max-width: 640px) {
+  aside[role="navigation"] { display: none !important; }
+  main { margin-left: 0 !important; }
+  .msg-bubble { max-width: 95%; padding: 0.75rem 1rem; font-size: 14px; }
+  header { padding-left: 12px !important; padding-right: 12px !important; }
+  #chat-input { padding-left: 12px; padding-right: 12px; }
+  .fixed[style*="left:"] { left: 12px !important; right: 12px !important; max-width: none !important; }
+}

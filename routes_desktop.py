@@ -158,6 +158,37 @@ def actualizar():
                 with _LOCK_UPDATE:
                     _ESTADO_UPDATE.update({"fase": "aplicando", "progreso": 100,
                                            "bat_ruta": bat["bat_ruta"]})
+                # Disparador real: lanza el .bat desacoplado y cierra la app.
+                # Sin esto el ciclo se quedaba a medias: el .bat quedaba escrito
+                # en TEMP pero nadie lo ejecutaba, y la UI decia "reiniciando..."
+                # para siempre.
+                import subprocess, os
+                bat_path = bat["bat_ruta"]
+                # El entorno de un proceso PyInstaller congelado lleva marcas
+                # (_PYI_APPLICATION_HOME_DIR, _PYI_ARCHIVE_FILE,
+                # _PYI_PARENT_PROCESS_LEVEL) que le dicen al bootloader "ya
+                # estas extraido". Si el .bat las hereda, el .exe relanzado se
+                # las cree, no extrae su bundle y muere buscando el _MEI de
+                # ESTA instancia, que para entonces ya se borro. El .bat las
+                # limpia tambien por su cuenta; aqui se cortan en el origen.
+                entorno = {k: v for k, v in os.environ.items()
+                           if not k.startswith("_PYI_") and k != "_MEIPASS2"}
+                subprocess.Popen(
+                    ["cmd", "/c", bat_path],
+                    env=entorno,
+                    creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP,
+                    close_fds=True,
+                )
+                # Liberar el .exe: cerrar la app (pywebview)
+                import sys
+                if hasattr(sys, 'frozen') or 'pywebview' in sys.modules:
+                    try:
+                        import webview
+                        for w in webview.windows:
+                            w.destroy()
+                    except Exception:
+                        pass
+                os._exit(0)
             except Exception as exc:              # noqa: BLE001
                 with _LOCK_UPDATE:
                     _ESTADO_UPDATE.update({"fase": "error", "detalle": str(exc)})

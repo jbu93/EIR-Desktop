@@ -146,6 +146,34 @@ def generar_script_reemplazo(ruta_nueva: str, exe_actual: str) -> dict:
 
     Devuelve {ok, bat_ruta, motivo?}. El .bat se guarda en el mismo directorio
     temporal del update (no en el del .exe, que puede no tener permisos).
+
+    Las tres cosas que este script tiene que hacer bien
+    ---------------------------------------------------
+
+    1. **Limpiar las variables ``_PYI_*`` antes de relanzar.** Es el bug que
+       rompia el auto-update entero. PyInstaller 6 marca a su proceso hijo con
+       ``_PYI_APPLICATION_HOME_DIR`` / ``_PYI_ARCHIVE_FILE`` /
+       ``_PYI_PARENT_PROCESS_LEVEL`` (antes se llamaba ``_MEIPASS2``). El .bat
+       nace de la app congelada y las hereda; el .exe relanzado tambien. Su
+       bootloader concluye "ya soy el hijo extraido", NO extrae el bundle, y
+       busca el DLL de Python en el ``_MEI`` de la instancia anterior — que ya
+       fue borrado. Muere con un dialogo modal "Failed to load Python DLL
+       '...\\_MEI21402\\python314.dll'". Modal: el proceso queda vivo esperando
+       un clic que nadie va a dar. Para el odontologo: hace clic en Actualizar,
+       la app se cierra y aparece un error cripitco que no dice nada.
+
+    2. **Esperar a que el .exe se pueda escribir.** Windows no deja sobrescribir
+       un ejecutable en uso. ``os._exit(0)`` mata al hijo Python al instante
+       pero el bootloader padre sigue vivo un rato borrando su ``_MEI``, asi que
+       un ``timeout`` fijo es una apuesta. Se sondea el bloqueo real
+       (``>>file (call )`` falla mientras algo lo tenga tomado).
+
+    3. **Dejar rastro.** ``_eir_dr_update.log`` es el unico sitio donde mirar si
+       esto falla en la maquina de un odontologo, que no tiene consola.
+
+    Detalle menor: se usa ``ping`` como pausa y no ``timeout``, porque
+    ``timeout`` lee de la consola y el .bat corre con DETACHED_PROCESS, sin
+    consola alguna.
     """
     ruta_nueva = str(ruta_nueva)
     exe_actual = str(exe_actual)
@@ -154,19 +182,49 @@ def generar_script_reemplazo(ruta_nueva: str, exe_actual: str) -> dict:
     try:
         _DIR_TEMPORAL.mkdir(parents=True, exist_ok=True)
         bat = _DIR_TEMPORAL / "_eir_dr_aplicar_update.bat"
+        log = _DIR_TEMPORAL / "_eir_dr_update.log"
         lineas = [
             "@echo off",
-            "timeout /t 2 /nobreak >nul",
-            f'copy /y "{ruta_nueva}" "{exe_actual}"',
-            "if errorlevel 1 exit /b 1",
-            f'del /f /q "{ruta_nueva}"',
+            # (1) sin esto el .exe relanzado se cree el hijo ya extraido de la
+            # instancia anterior y muere buscando un _MEI que ya no existe
+            "set _PYI_APPLICATION_HOME_DIR=",
+            "set _PYI_ARCHIVE_FILE=",
+            "set _PYI_PARENT_PROCESS_LEVEL=",
+            "set _MEIPASS2=",
+            f'echo [%date% %time%] update: esperando a que se libere el exe > "{log}"',
+            "set /a N=0",
+            "",
+            ":esperar",
+            "ping -n 2 127.0.0.1 >nul 2>&1",
+            "set /a N+=1",
+            # (2) el append falla mientras algun proceso tenga el .exe tomado
+            f'2>nul (>>"{exe_actual}" call ) && goto libre',
+            "if %N% GEQ 90 (",
+            f'  echo [%date% %time%] ERROR: el exe sigue bloqueado tras %N% intentos >> "{log}"',
+            "  exit /b 2",
+            ")",
+            "goto esperar",
+            "",
+            ":libre",
+            f'echo [%date% %time%] exe libre tras %N% intentos; copiando >> "{log}"',
+            f'copy /y "{ruta_nueva}" "{exe_actual}" >nul 2>&1',
+            "if errorlevel 1 (",
+            f'  echo [%date% %time%] ERROR: fallo el copy >> "{log}"',
+            "  exit /b 1",
+            ")",
+            f'del /f /q "{ruta_nueva}" >nul 2>&1',
+            # margen para que el sistema cierre el handle de escritura del copy
+            "ping -n 3 127.0.0.1 >nul 2>&1",
+            f'echo [%date% %time%] relanzando >> "{log}"',
             f'start "" "{exe_actual}"',
+            f'echo [%date% %time%] listo >> "{log}"',
             "exit /b 0",
         ]
         bat.write_text("\r\n".join(lineas) + "\r\n", encoding="utf-8")
     except OSError as e:
         return {"ok": False, "motivo": "error_escritura", "detalle": str(e)}
-    return {"ok": True, "bat_ruta": str(bat), "exe_actual": exe_actual}
+    return {"ok": True, "bat_ruta": str(bat), "exe_actual": exe_actual,
+            "log_ruta": str(log)}
 
 
 def estado(force: bool = False) -> dict:

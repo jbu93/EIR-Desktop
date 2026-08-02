@@ -25,6 +25,7 @@
     connection: 'checking',
     sesion: { autenticado: false }, // reflejo de /api/sesion (el token vive en el proceso Python)
     paradigmaPlan: false, // M-057/M-061 · false=build (default histórico), true=plan
+    update: { fase: 'inactivo', version: '', pollTimer: null }, // D078
   };
 
   // M-058/M-061 · nombres de tool locales que el servidor cloud puede pedir
@@ -111,6 +112,15 @@
     updateBanner: el('update-banner'),
     updateText: el('update-text'),
     updateLink: /** @type {HTMLAnchorElement} */ (el('update-link')),
+    updateNowBtn: el('update-now-btn'),
+    updateProgressWrap: el('update-progress-wrap'),
+    updateProgressBar: el('update-progress-bar'),
+    updateProgressText: el('update-progress-text'),
+    updateModal: el('update-modal'),
+    updateModalVersion: el('update-modal-version'),
+    updateConfirmBtn: el('update-confirm-btn'),
+    updateCancelBtn: el('update-cancel-btn'),
+    sidebarVersion: el('sidebar-version'),
     paradigmaPlanBtn: /** @type {HTMLButtonElement} */ (el('paradigma-plan-btn')),
   };
 
@@ -174,6 +184,11 @@
     els.loginCancelBtn.addEventListener('click', cerrarLogin);
     els.loginForm.addEventListener('submit', enviarLogin);
     els.sessionLogoutBtn.addEventListener('click', logout);
+
+    // D078 · auto-update: confirmar antes de reemplazar el .exe
+    els.updateNowBtn.addEventListener('click', abrirConfirmacionActualizar);
+    els.updateCancelBtn.addEventListener('click', cerrarConfirmacionActualizar);
+    els.updateConfirmBtn.addEventListener('click', iniciarActualizacion);
 
     // M-057/M-061 · alterna build/plan. Solo cambia CÓMO se envía el próximo
     // mensaje (paradigma) — cero efecto sobre lo ya conversado.
@@ -792,20 +807,102 @@
     await cargarSesion();
   }
 
-  // ─── Señal de versión / auto-update (M-052) ───
+  // ─── Señal de versión / auto-update (M-052 · D078) ───
   async function cargarVersion() {
     try {
       const resp = await fetch('/api/version', { cache: 'no-cache' });
       const v = await resp.json().catch(() => ({}));
-      if (v && v.ok && v.hay_actualizacion) {
-        els.updateText.textContent = 'Nueva versión · v' + v.disponible + ' (tienes v' + v.actual + ')';
-        els.updateLink.href = v.url_windows || '#';
-        els.updateBanner.hidden = false;
+      if (v && v.ok) {
+        els.sidebarVersion.textContent = 'v' + v.actual;
+        if (v.hay_actualizacion) {
+          state.update.version = v.disponible || '';
+          els.updateText.textContent = 'Nueva versión · v' + v.disponible + ' (tienes v' + v.actual + ')';
+          els.updateLink.href = v.url_windows || '#';
+          // D078 · el botón "Actualizar ahora" solo se muestra si el release
+          // trae el kill-switch encendido (L10; v.auto_update).
+          els.updateNowBtn.hidden = !(v.auto_update === true);
+          els.updateBanner.hidden = false;
+          if (state.update.fase === 'aplicando') pintarProgresoUpdate(100, 'Actualización lista, reiniciando…');
+        } else {
+          els.updateBanner.hidden = true;
+        }
       } else {
         els.updateBanner.hidden = true;
       }
     } catch (e) {
       els.updateBanner.hidden = true;
+    }
+  }
+
+  // ─── Auto-update (D078): confirmación → descarga → reinicio ───
+  function abrirConfirmacionActualizar() {
+    els.updateModalVersion.textContent = 'v' + (state.update.version || '');
+    els.updateModal.classList.remove('hidden');
+    els.updateModal.classList.add('flex');
+  }
+
+  function cerrarConfirmacionActualizar() {
+    els.updateModal.classList.add('hidden');
+    els.updateModal.classList.remove('flex');
+  }
+
+  function pintarProgresoUpdate(pct, texto) {
+    els.updateProgressWrap.hidden = false;
+    els.updateProgressBar.style.width = Math.max(0, Math.min(100, pct)) + '%';
+    if (texto) els.updateProgressText.textContent = texto;
+  }
+
+  async function iniciarActualizacion() {
+    els.updateConfirmBtn.disabled = true;
+    els.updateCancelBtn.disabled = true;
+    cerrarConfirmacionActualizar();
+    els.updateNowBtn.hidden = true;
+    try {
+      const resp = await fetch('/api/shell/actualizar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok || !data.ok) {
+        pintarProgresoUpdate(0, 'No se pudo iniciar: ' + (data.error || ('HTTP ' + resp.status)));
+        els.updateNowBtn.hidden = false;
+        return;
+      }
+      state.update.fase = data.fase || 'descargando';
+      pintarProgresoUpdate(data.progreso || 0, data.fase === 'aplicando' ? 'Actualización lista, reiniciando…' : 'Descargando…');
+      pollProgreso();
+    } catch (e) {
+      pintarProgresoUpdate(0, 'Backend local no disponible');
+      els.updateNowBtn.hidden = false;
+    } finally {
+      els.updateConfirmBtn.disabled = false;
+      els.updateCancelBtn.disabled = false;
+    }
+  }
+
+  function pollProgreso() {
+    if (state.update.pollTimer) return;
+    state.update.pollTimer = setInterval(async () => {
+      try {
+        const resp = await fetch('/api/shell/actualizar/progreso', { cache: 'no-cache' });
+        const d = await resp.json().catch(() => ({}));
+        state.update.fase = d.fase || state.update.fase;
+        if (d.fase === 'error') {
+          pintarProgresoUpdate(0, 'Falló: ' + (d.detalle || 'error desconocido'));
+          els.updateNowBtn.hidden = false;
+          stopPoll();
+          return;
+        }
+        pintarProgresoUpdate(d.progreso || 0, d.fase === 'aplicando' ? 'Actualización lista, reiniciando…' : 'Descargando…');
+        if (d.fase === 'aplicando') stopPoll();
+      } catch (e) { /* el backend se cerrará al reiniciar; no bloquear */ }
+    }, 1000);
+  }
+
+  function stopPoll() {
+    if (state.update.pollTimer) {
+      clearInterval(state.update.pollTimer);
+      state.update.pollTimer = null;
     }
   }
 
