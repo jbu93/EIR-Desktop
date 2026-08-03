@@ -23,4 +23,4 @@ Principio no negociable (AGENTS.md §1, doc 02-arquitectura):
    NUNCA los editan. El proyecto principal sigue intacto y en produccion.
 """
 
-__version__ = "1.1.1"
+__version__ = "1.1.2"
