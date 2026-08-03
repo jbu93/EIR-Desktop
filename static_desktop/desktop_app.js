@@ -24,11 +24,52 @@
     conversations: [], // {id, role, title, timestamp}
     connection: 'checking',
     sesion: { autenticado: false }, // reflejo de /api/sesion (el token vive en el proceso Python)
+    update: { fase: 'inactivo', version: '', pollTimer: null },
+    inferenceMode: 'cloud', // 'cloud' | 'byok' (F2 selector)
     paradigmaPlan: false, // M-057/M-061 · false=build (default histórico), true=plan
-    update: { fase: 'inactivo', version: '', pollTimer: null }, // D078
+    preguntasPlan: {}, // M-063 · wizard de preguntas: cuántas ya se hicieron, por rol
   };
 
-  // M-058/M-061 · nombres de tool locales que el servidor cloud puede pedir
+  // ─── Markdown seguro (reutilizado de atelier_shell.js web) ───
+  // Escapa TODO primero, luego aplica markdown inline encima.
+  // Nunca se renderiza HTML crudo del LLM (regla L4).
+  function escapeHtml(s) {
+    // D097 · bug de larga data (desde 32383c8): estos reemplazos usaban los
+    // caracteres literales &/</>/" en vez de las entidades HTML — la
+    // comilla suelta rompía el parseo de TODO el archivo (SyntaxError),
+    // y aunque no lo hiciera, la función no escapaba nada (reemplazaba
+    // cada carácter por sí mismo). Nunca se detectó porque nadie miraba
+    // la consola del navegador — el .exe simplemente nunca cargaba JS.
+    return String(s == null ? "" : s)
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+  }
+  function mdInline(s) {
+    return s
+      .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+      .replace(/\*([^*]+)\*/g, "<em>$1</em>")
+      .replace(/`([^`]+)`/g, "<code>$1</code>");
+  }
+  function mdToHtml(text) {
+    const lineas = escapeHtml(text).split("\n");
+    let html = "", enLista = null;
+    const cerrarLista = () => { if (enLista) { html += `</${enLista}>`; enLista = null; } };
+    for (let raw of lineas) {
+      const l = raw.trim();
+      if (!l) { cerrarLista(); continue; }
+      let m;
+      if ((m = l.match(/^#{2,4}\s+(.*)/))) { cerrarLista(); html += `<h4>${mdInline(m[1])}</h4>`; continue; }
+      if ((m = l.match(/^\*\*(.+?):\*\*$/))) { cerrarLista(); html += `<p class="md-sub">${mdInline(m[1])}</p>`; continue; }
+      if ((m = l.match(/^\d+\.\s+(.*)/))) { if (enLista !== "ol") { cerrarLista(); html += "<ol>"; enLista = "ol"; } html += `<li>${mdInline(m[1])}</li>`; continue; }
+      if ((m = l.match(/^[*-]\s+(.*)/))) { if (enLista !== "ul") { cerrarLista(); html += "<ul>"; enLista = "ul"; } html += `<li>${mdInline(m[1])}</li>`; continue; }
+      cerrarLista();
+      html += `<p>${mdInline(l)}</p>`;
+    }
+    cerrarLista();
+    return html || "<p></p>";
+  }
+
+  // ─── M-058/M-061 · nombres de tool locales ─── que el servidor cloud puede pedir
   // en delegación (D085, solo lectura). Etiqueta legible en la traza cuando
   // aparecen — NO es un indicador en vivo (la respuesta llega ya completa,
   // sin streaming), es honesto sobre lo que EIR hizo, no sobre cuándo.
@@ -121,7 +162,12 @@
     updateConfirmBtn: el('update-confirm-btn'),
     updateCancelBtn: el('update-cancel-btn'),
     sidebarVersion: el('sidebar-version'),
+    inferenceModeSelector: el('inference-mode-selector'),
+    inferenceModeCloud: () => document.querySelector('input[name="inference-mode"][value="cloud"]'),
+    inferenceModeByok: () => document.querySelector('input[name="inference-mode"][value="byok"]'),
+    inferenceModeStatus: el('inference-mode-status'),
     paradigmaPlanBtn: /** @type {HTMLButtonElement} */ (el('paradigma-plan-btn')),
+    modelSelect: /** @type {HTMLSelectElement} */ (el('model-select')),
   };
 
   // ─── Arranque ───
@@ -135,6 +181,7 @@
     setInterval(checkConnection, 20000);
     cargarSesion();
     cargarVersion();
+    cargarModelos();
   }
 
   function bindEvents() {
@@ -185,10 +232,39 @@
     els.loginForm.addEventListener('submit', enviarLogin);
     els.sessionLogoutBtn.addEventListener('click', logout);
 
-    // D078 · auto-update: confirmar antes de reemplazar el .exe
     els.updateNowBtn.addEventListener('click', abrirConfirmacionActualizar);
     els.updateCancelBtn.addEventListener('click', cerrarConfirmacionActualizar);
     els.updateConfirmBtn.addEventListener('click', iniciarActualizacion);
+
+    // F2/D097 · selector de modo de inferencia: envía la elección real al
+    // backend (antes solo cambiaba una variable local que nunca se enviaba).
+    async function actualizarModoInferencia() {
+      const modo = els.inferenceModeCloud().checked ? 'cloud' : 'byok';
+      state.inferenceMode = modo;
+      els.inferenceModeStatus.hidden = true;
+      try {
+        const resp = await fetch('/api/shell/modo-inferencia', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ modo }),
+        });
+        const data = await resp.json().catch(() => ({}));
+        if (modo === 'byok') {
+          const oc = data.opencode || {};
+          els.inferenceModeStatus.hidden = false;
+          els.inferenceModeStatus.textContent = oc.disponible
+            ? 'OpenCode conectado'
+            : 'OpenCode no disponible: ' + (oc.motivo || 'desconocido');
+        }
+      } catch (e) {
+        if (modo === 'byok') {
+          els.inferenceModeStatus.hidden = false;
+          els.inferenceModeStatus.textContent = 'No se pudo consultar el backend local';
+        }
+      }
+    }
+    els.inferenceModeCloud().addEventListener('change', actualizarModoInferencia);
+    els.inferenceModeByok().addEventListener('change', actualizarModoInferencia);
 
     // M-057/M-061 · alterna build/plan. Solo cambia CÓMO se envía el próximo
     // mensaje (paradigma) — cero efecto sobre lo ya conversado.
@@ -196,7 +272,43 @@
       state.paradigmaPlan = !state.paradigmaPlan;
       els.paradigmaPlanBtn.setAttribute('aria-pressed', String(state.paradigmaPlan));
       els.paradigmaPlanBtn.classList.toggle('active', state.paradigmaPlan);
+      state.preguntasPlan[state.role] = 0; // M-063 · nuevo ciclo de plan, cuenta limpia
+      cargarModelos(); // el catálogo se filtra por paradigma (Modo PLAN/BUILD)
     });
+
+    els.modelSelect.addEventListener('change', async () => {
+      try {
+        await fetch('/api/shell/modelo', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ modelo: els.modelSelect.value }),
+        });
+      } catch (e) { /* el select ya refleja la elección local; falla silenciosa de red */ }
+    });
+  }
+
+  // 2026-08-03 · selector de modelo del sidebar: pinta el catálogo real del
+  // tier de la sesión (filtrado por el paradigma activo, plan o build), y
+  // preserva la selección actual si sigue existiendo en el catálogo nuevo.
+  async function cargarModelos() {
+    if (!els.modelSelect) return;
+    const paradigma = state.paradigmaPlan ? 'plan' : 'build';
+    const previaSeleccion = els.modelSelect.value;
+    try {
+      const resp = await fetch(`/api/shell/modelos?paradigma=${paradigma}`);
+      const data = await resp.json();
+      const modelos = data.modelos || [];
+      els.modelSelect.innerHTML = '<option value="">Auto · EIR decide</option>' +
+        modelos.map((m) => {
+          const etiqueta = m.gratis ? `${m.modelo} (gratis)` : m.modelo;
+          return `<option value="${escapeHtml(m.modelo)}">${escapeHtml(etiqueta)}</option>`;
+        }).join('');
+      if (modelos.some((m) => m.modelo === previaSeleccion)) {
+        els.modelSelect.value = previaSeleccion;
+      }
+    } catch (e) {
+      // Sin red o backend caído: el select se queda en "Auto" — nunca finge un catálogo.
+    }
   }
 
   // ─── §UI-2026-08-02 · Dictado por voz (Web Speech API) ───
@@ -337,7 +449,11 @@
     row.className = 'msg-row ' + quien + (esError ? ' error' : '');
     const bubble = document.createElement('div');
     bubble.className = 'msg-bubble';
-    bubble.textContent = texto;
+    if (quien === 'eir') {
+      bubble.innerHTML = mdToHtml(texto);
+    } else {
+      bubble.textContent = texto;
+    }
     row.appendChild(bubble);
     els.messages.appendChild(row);
     scrollToBottom();
@@ -398,9 +514,12 @@
    * @param {{ destino: string, tokenAprobacion?: string, paradigma?: string, plan?: any, tokenPlan?: string }} opciones
    */
   async function enviarMensaje(rol, mensaje, { destino, tokenAprobacion, paradigma, plan, tokenPlan }) {
+    // FIX · core/contexto_chat._limpiar() exige la clave `content` (no `text`);
+    // con `text` cada turno se descartaba en silencio y el chat no tenía
+    // memoria real entre mensajes, en NINGÚN paradigma ni cliente.
     const historialPrevio = (state.historyByRole[rol] || [])
       .slice(-10)
-      .map((t) => ({ role: t.rol === 'usuario' ? 'user' : 'assistant', text: t.texto }));
+      .map((t) => ({ role: t.rol === 'usuario' ? 'user' : 'assistant', content: t.texto }));
 
     let esperaRow = null;
     if (destino === 'chat') {
@@ -427,6 +546,7 @@
           paradigma: paradigmaFinal,
           plan: plan || null,
           token_plan: tokenPlan || '',
+          preguntas_hechas: state.preguntasPlan[rol] || 0,
         }),
       });
       const data = await resp.json().catch(() => ({}));
@@ -465,6 +585,13 @@
       }
       state.historyByRole[rol].push({ rol: 'eir', texto, pasos: resultado.pasos || [] });
       registrarConversacion(rol, mensaje);
+
+      // M-063 · wizard de preguntas: el LLM pidió aclarar antes de presentar
+      // el plan. Se cuenta para el tope; el doctor responde en el MISMO
+      // input, como cualquier mensaje — no hace falta UI nueva.
+      if (resultado.motivo_fin === 'pregunta_aclaracion') {
+        state.preguntasPlan[rol] = (state.preguntasPlan[rol] || 0) + 1;
+      }
     }
 
     saveToStorage();
@@ -474,6 +601,7 @@
     // espera aprobación antes de que "auto" ejecute nada.
     if (!error && resultado && resultado.aprobacion_pendiente
         && resultado.aprobacion_pendiente.tipo === 'plan' && !tokenPlan) {
+      state.preguntasPlan[rol] = 0; // M-063 · el wizard terminó: plan en mano
       const token = await pedirAprobacionPlan(resultado.plan, resultado.aprobacion_pendiente);
       if (token) {
         await enviarMensaje(rol, mensaje, {

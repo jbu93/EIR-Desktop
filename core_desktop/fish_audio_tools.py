@@ -23,7 +23,11 @@ from datetime import datetime
 import httpx
 
 # Configuración
-API_KEY = os.getenv("FISH_AUDIO_API_KEY", "4309ec5b7e564854ab47e08586e116de")
+# L15: sin secretos en código — antes tenía una key de Fish Audio ajena
+# hardcodeada como default (viajaba dentro del .exe publicado). Sin la key
+# en el entorno, las llamadas devuelven 401 y ya se manejan como fallo
+# honesto (ver el `resp.status_code != 200` en hablar_fish_audio()).
+API_KEY = os.getenv("FISH_AUDIO_API_KEY", "").strip()
 BASE_URL = "https://api.fish.audio"
 DOWNLOADS_DIR = Path.home() / "Downloads"
 

@@ -27,9 +27,10 @@ def ejecutar_local(mensaje: str, historial: list | None = None,
                    paradigma: str = "build",
                    max_pesos: int | None = None,
                    plan: dict | None = None,
-                   token_plan: str | None = None) -> dict:
+                   token_plan: str | None = None,
+                   preguntas_hechas: int = 0) -> dict:
     historial = list(historial or [])
-    lc = resolver_cliente("laboratorio")
+    lc = resolver_cliente("laboratorio", paradigma=paradigma)
 
     # Poblar registro de plugins ANTES de ejecutar el loop
     poblar_registro_completo()
@@ -44,18 +45,24 @@ def ejecutar_local(mensaje: str, historial: list | None = None,
         sistema=SISTEMA_LABORATORIO, habilitado=habilitar_loop,
         token_aprobacion=token_aprobacion,
         paradigma=paradigma, max_pesos=max_pesos, plan=plan, token_plan=token_plan,
+        preguntas_hechas=preguntas_hechas,
         ejecutores=construir_ejecutores(),
         tools_schema=construir_tools_schema(),
         max_pasos=2, max_segundos=12.0,
     )
-    # M-052 · cliente cloud: el backend ya narró la respuesta → se expone tal cual
-    # D097 · para el resto, si el LLM no pidió ninguna tool, se pide el texto
-    # conversacional real en vez de exponer el resumen técnico interno.
+    # M-063 · el modelo pidió aclaración antes del plan: ESA es la respuesta
+    # visible, tal cual — no se re-consulta al LLM (perdería la pregunta).
+    if r.pregunta_aclaracion:
+        resumen = r.pregunta_aclaracion
+    else:
+        # M-052 · cliente cloud: el backend ya narró la respuesta → se expone tal cual
+        # D097 · para el resto, si el LLM no pidió ninguna tool, se pide el texto
+        # conversacional real en vez de exponer el resumen técnico interno.
+        resumen = resolver_texto_final(
+            lc, r, modelo="mock-laboratorio", sistema=SISTEMA_LABORATORIO,
+            historial=historial, mensaje=mensaje,
+        )
     traza_cloud = getattr(lc, "ultima_traza", None)
-    resumen = resolver_texto_final(
-        lc, r, modelo="mock-laboratorio", sistema=SISTEMA_LABORATORIO,
-        historial=historial, mensaje=mensaje,
-    )
     credito = getattr(lc, "ultimo_credito", None)
     out = {
         "pasos": traza_cloud if traza_cloud else [

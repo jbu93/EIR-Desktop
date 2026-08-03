@@ -86,6 +86,30 @@
               </div>
             </div>
           </div>
+
+          <!-- F2/D097 · selector honesto de modo de inferencia -->
+          <div id="inference-mode-selector" class="flex flex-col gap-2 p-3 rounded-lg border border-outline-variant bg-surface-container-low">
+            <span class="font-label-caps text-[10px] text-on-surface-variant tracking-wide">MODO DE INFERENCIA</span>
+            <div class="flex flex-col gap-1.5">
+              <label class="flex items-center gap-2 cursor-pointer">
+                <input type="radio" name="inference-mode" value="cloud" checked class="w-4 h-4 accent-primary">
+                <span class="text-[12px] text-on-surface">Gratis en la nube <span class="text-primary font-mono text-[10px]">(límite 15/día)</span></span>
+              </label>
+              <label class="flex items-center gap-2 cursor-pointer">
+                <input type="radio" name="inference-mode" value="byok" class="w-4 h-4 accent-primary">
+                <span class="text-[12px] text-on-surface">BYOK avanzado <span class="text-primary font-mono text-[10px]">(tus propios modelos)</span></span>
+              </label>
+            </div>
+            <span id="inference-mode-status" class="font-mono text-[10px] text-on-surface-variant" hidden></span>
+          </div>
+
+          <!-- 2026-08-03 · selector de modelo (catálogo estático por tier+paradigma) -->
+          <div id="model-selector-box" class="flex flex-col gap-1.5 p-3 rounded-lg border border-outline-variant bg-surface-container-low">
+            <span class="font-label-caps text-[10px] text-on-surface-variant tracking-wide">MODELO</span>
+            <select id="model-select" class="w-full text-[12px] bg-surface-container rounded-lg px-2 py-1.5 border border-outline-variant text-on-surface">
+              <option value="">Auto · EIR decide</option>
+            </select>
+          </div>
         </div>
 
         <p class="text-[11px] text-on-surface-variant opacity-70 leading-snug">
@@ -203,8 +227,8 @@
                   <div class="flex flex-col leading-tight">
                     <span class="font-label-sm font-bold text-on-surface" id="stl-filename">Visor 3D de STL · local</span>
                     <span class="font-mono text-[10px] text-on-surface-variant opacity-70">100% offline · la malla no sale del equipo · L6</span>
-                  </div>
-                </div>
+</div>
+        </div>
                 <div class="flex items-center gap-2">
                   <button id="stl-open-btn" type="button" class="flex items-center gap-1.5 bg-primary text-on-primary px-3 py-1.5 rounded-lg font-label-sm font-bold hover:opacity-90">
                     <span class="material-symbols-outlined text-[16px]">folder_open</span>

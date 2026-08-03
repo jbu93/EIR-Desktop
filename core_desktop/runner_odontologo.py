@@ -40,7 +40,8 @@ def ejecutar_local(mensaje: str, historial: list | None = None,
                    paradigma: str = "build",
                    max_pesos: int | None = None,
                    plan: dict | None = None,
-                   token_plan: str | None = None) -> dict:
+                   token_plan: str | None = None,
+                   preguntas_hechas: int = 0) -> dict:
     """Ejecuta el rol odontologo en el sandbox.
 
     Con EIR_OPENCODE_ENABLED apagado (default) → ClienteMockSandbox (offline).
@@ -48,9 +49,11 @@ def ejecutar_local(mensaje: str, historial: list | None = None,
 
     `paradigma`/`max_pesos`/`plan`/`token_plan` (M-057): se reenvían al loop;
     `build` (default) no cambia el comportamiento histórico (L17).
+    `preguntas_hechas` (M-063): cuántas preguntas de aclaración ya se hicieron
+    en esta conversación (el caller las cuenta turno a turno).
     """
     historial = list(historial or [])
-    lc = resolver_cliente("odontologo")
+    lc = resolver_cliente("odontologo", paradigma=paradigma)
 
     # Poblar registro de plugins ANTES de ejecutar el loop
     # Esto registra local_tools + fish_audio + herramientas de fase B1/B2
@@ -78,20 +81,26 @@ def ejecutar_local(mensaje: str, historial: list | None = None,
         max_pesos=max_pesos,
         plan=plan,
         token_plan=token_plan,
+        preguntas_hechas=preguntas_hechas,
         ejecutores=construir_ejecutores(),
         tools_schema=construir_tools_schema(),
         max_pasos=2,       # sandbox corto: basta para ver 1 tool-call + 1 salida
         max_segundos=15.0,
     )
-    # M-052 · cliente cloud: el backend ya narró la respuesta → se expone tal cual
-    # D097 · para el resto (mock/OpenCode/futuros BYOK), si el LLM no pidió
-    # ninguna tool, resolver_texto_final() pide el texto conversacional real
-    # en vez de exponer el resumen técnico interno.
+    # M-063 · el modelo pidió aclaración antes del plan: ESA es la respuesta
+    # visible, tal cual — no se re-consulta al LLM (perdería la pregunta).
+    if r.pregunta_aclaracion:
+        resumen = r.pregunta_aclaracion
+    else:
+        # M-052 · cliente cloud: el backend ya narró la respuesta → se expone tal cual
+        # D097 · para el resto (mock/OpenCode/futuros BYOK), si el LLM no pidió
+        # ninguna tool, resolver_texto_final() pide el texto conversacional real
+        # en vez de exponer el resumen técnico interno.
+        resumen = resolver_texto_final(
+            lc, r, modelo="mock-odontologo", sistema=SISTEMA_ODONTOLOGO,
+            historial=historial, mensaje=mensaje,
+        )
     traza_cloud = getattr(lc, "ultima_traza", None)
-    resumen = resolver_texto_final(
-        lc, r, modelo="mock-odontologo", sistema=SISTEMA_ODONTOLOGO,
-        historial=historial, mensaje=mensaje,
-    )
     credito = getattr(lc, "ultimo_credito", None)
     out = {
         "pasos": traza_cloud if traza_cloud else [

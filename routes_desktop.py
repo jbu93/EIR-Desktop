@@ -3,13 +3,15 @@
 NO toca ``routes_narrativa.py`` (produccion). Define ``bp_desktop`` que:
 
   - POST /api/shell/conversar  · recibe {rol, mensaje, historial?} y
-                                  despacha al runner_*.ejecutar_local()
-                                  del rol correspondiente.
+                                   despacha al runner_*.ejecutar_local()
+                                   del rol correspondiente.
   - GET  /api/shell/roles      · lista los 4 roles disponibles (para el
-                                  selector del frontend).
+                                   selector del frontend).
   - GET  /api/shell/contrato   · devueve el JSON contract documentado
-                                  de eirdr.com/api/v1/inference futuro
-                                  (util para inspeccionar el mock).
+                                   de eirdr.com/api/v1/inference futuro
+                                   (util para inspeccionar el mock).
+  - POST /api/shell/actualizar  · inicia descarga+verificación del .exe nuevo (D078)
+  - GET  /api/shell/actualizar/progreso  · polling del estado de actualización
 """
 from __future__ import annotations
 
@@ -20,6 +22,17 @@ from flask import Blueprint, jsonify, request
 bp_desktop = Blueprint("bp_desktop", __name__)
 
 _ROLES = ("odontologo", "recepcion", "laboratorio", "marketing")
+
+# ─── Auto-update state (D078) ───
+_ESTADO_UPDATE: dict = {"fase": "inactivo", "progreso": 0, "detalle": ""}
+_LOCK_UPDATE = threading.Lock()
+
+
+def _mod_actualizador_auto():
+    mod = _mod_actualizador()
+    if not mod._auto_update_activo():
+        return None
+    return mod
 
 
 def _resolver_runner(rol: str):
@@ -50,6 +63,41 @@ def _resolver_runner(rol: str):
 @bp_desktop.get("/api/shell/roles")
 def roles():
     return jsonify(roles=list(_ROLES))
+
+
+def _mod_model_catalog():
+    try:
+        from .core_desktop import model_catalog
+        return model_catalog
+    except ImportError:
+        from core_desktop import model_catalog
+        return model_catalog
+
+
+@bp_desktop.get("/api/shell/modelos")
+def modelos():
+    """2026-08-03 · catálogo de modelos para el selector del sidebar.
+
+    Análogo a `/api/shell/modelos` del sitio principal (`routes_narrativa.py`),
+    pero lee el catálogo ESTÁTICO del desktop (`core_desktop/model_catalog.py`)
+    filtrado por el tier real de la sesión — no consulta `opencode serve` en
+    vivo (decisión explícita: ese endpoint devuelve las API keys en texto
+    plano en el JSON, exigiría una capa de saneo que no existe hoy).
+
+    `?paradigma=plan|build` decide qué `Modo` se usa para filtrar — el mismo
+    valor que ya viaja al toggle de Modo Plan/Build del chat.
+    """
+    mc = _mod_model_catalog()
+    tier_str = (_mod_sesion().estado() or {}).get("tier", "freemium")
+    try:
+        tier = mc.Tier(tier_str.lower())
+    except Exception:
+        tier = mc.Tier.FREEMIUM
+    paradigma = (request.args.get("paradigma") or "build").strip()
+    modo = mc.Modo.PLAN if paradigma == "plan" else mc.Modo.BUILD
+    ids = mc.listar_modelos_disponibles(tier, modo)
+    modelos_info = [mc.obtener_info_modelo(m) for m in ids]
+    return jsonify(ok=True, tier=tier.value, paradigma=paradigma, modelos=modelos_info)
 
 
 # ─── M-052 · sesión cloud + versión (el token nunca toca el webview) ─────
@@ -103,17 +151,118 @@ def version_local():
     return jsonify(res)
 
 
-# ─── D078 · auto-update del .exe (kill-switch L10 + descarga + reinicio) ───
+@bp_desktop.get("/api/opencode/estado")
+def opencode_estado():
+    """Diagnóstico honesto del motor BYOK local (M-059).
 
-_ESTADO_UPDATE: dict = {"fase": "inactivo", "progreso": 0, "detalle": ""}
-_LOCK_UPDATE = threading.Lock()
+    El doctor nunca ve una consola (pywebview no la tiene): este endpoint es
+    el único lugar donde puede enterarse de por qué su chat con OpenCode no
+    responde. No requiere que el proceso esté vivo — si nunca arrancó, o si
+    el módulo no se pudo importar, igual responde 200 con un motivo estable
+    en vez de un 500 críptico.
+    """
+    try:
+        from core_desktop.opencode_server import get_server_manager
+    except ImportError:
+        from .core_desktop.opencode_server import get_server_manager
+    try:
+        return jsonify(get_server_manager().estado())
+    except Exception as exc:               # noqa: BLE001 — diagnóstico, nunca un 500
+        return jsonify(disponible=False, motivo="error_interno",
+                       reintentos=0, fallo_persistente=False, detalle=str(exc)[:200])
 
 
-def _mod_actualizador_auto():
-    mod = _mod_actualizador()
-    if not mod._auto_update_activo():
-        return None
-    return mod
+@bp_desktop.post("/api/shell/modo-inferencia")
+def modo_inferencia():
+    """D097 · el doctor elige cloud/BYOK en el selector del sidebar.
+
+    Fija la elección en memoria (sin reiniciar el .exe: el switch de
+    OpenCode se lee en tiempo de llamada — L10) y, si eligió BYOK, intenta
+    arrancar `opencode serve` (idempotente: si ya está corriendo, no hace
+    nada). Devuelve el diagnóstico honesto de OpenCode en la misma
+    respuesta para que el frontend nunca tenga que fingir que arrancó si
+    en realidad no está instalado.
+    """
+    payload = request.get_json(silent=True) or {}
+    modo = (payload.get("modo") or "").strip()
+    if modo not in ("cloud", "byok"):
+        return jsonify(error="modo_invalido", modos_validos=["cloud", "byok"], code=400), 400
+
+    try:
+        from core_desktop.cliente_opencode import establecer_modo_inferencia
+    except ImportError:
+        from .core_desktop.cliente_opencode import establecer_modo_inferencia
+    establecer_modo_inferencia(modo)
+
+    opencode_diag = {"disponible": False, "motivo": "no_solicitado"}
+    if modo == "byok":
+        try:
+            from core_desktop.opencode_server import (
+                iniciar_opencode_server, get_server_manager,
+            )
+        except ImportError:
+            from .core_desktop.opencode_server import (
+                iniciar_opencode_server, get_server_manager,
+            )
+        try:
+            iniciar_opencode_server()
+            opencode_diag = get_server_manager().estado()
+        except Exception as exc:            # noqa: BLE001 — diagnóstico, nunca un 500
+            opencode_diag = {"disponible": False, "motivo": "error_interno",
+                             "detalle": str(exc)[:200]}
+
+    return jsonify(ok=True, modo=modo, opencode=opencode_diag)
+
+
+@bp_desktop.post("/api/shell/modelo")
+def elegir_modelo():
+    """2026-08-03 · el doctor elige un modelo explícito en el selector del
+    sidebar (o "" / "auto" para volver a dejar decidir al catálogo).
+
+    Valida contra el catálogo REAL del tier de la sesión — nunca confía a
+    ciegas en lo que mande el frontend (fail-closed, mismo principio que
+    `_tools_delegables_validas` del gateway cloud): un modelo que no exista
+    para ese tier/paradigma se rechaza con 400 en vez de guardarse.
+    """
+    try:
+        from .core_desktop.cliente_opencode import establecer_modelo
+        from .core_desktop import model_catalog as mc, sesion
+    except ImportError:
+        from core_desktop.cliente_opencode import establecer_modelo
+        from core_desktop import model_catalog as mc, sesion
+
+    payload = request.get_json(silent=True) or {}
+    modelo_id = (payload.get("modelo") or "").strip()
+
+    if modelo_id:
+        tier_str = (sesion.estado() or {}).get("tier", "freemium")
+        try:
+            tier = mc.Tier(tier_str.lower())
+        except Exception:
+            tier = mc.Tier.FREEMIUM
+        catalogo = set(mc.listar_modelos_disponibles(tier, mc.Modo.PLAN)) | \
+            set(mc.listar_modelos_disponibles(tier, mc.Modo.BUILD))
+        if modelo_id not in catalogo:
+            return jsonify(error="modelo_invalido", code=400), 400
+
+    establecer_modelo(modelo_id or None)
+    return jsonify(ok=True, modelo=modelo_id or "auto")
+
+
+@bp_desktop.get("/api/shell/contrato")
+def contrato():
+    try:
+        from .core_desktop.cliente_llm import contrato_inference
+    except ImportError:
+        from core_desktop.cliente_llm import contrato_inference
+    return jsonify(contrato_inference())
+
+
+def _exe_actual() -> str:
+    """Ruta del .exe en ejecución (sys.executable dentro del bundle PyInstaller;
+    en dev es el python.exe)."""
+    import sys
+    return sys.executable
 
 
 @bp_desktop.post("/api/shell/actualizar")
@@ -166,10 +315,7 @@ def actualizar():
                 with _LOCK_UPDATE:
                     _ESTADO_UPDATE.update({"fase": "aplicando", "progreso": 100,
                                            "bat_ruta": bat["bat_ruta"]})
-                # Disparador real: lanza el .bat desacoplado y cierra la app.
-                # Sin esto el ciclo se quedaba a medias: el .bat quedaba escrito
-                # en TEMP pero nadie lo ejecutaba, y la UI decia "reiniciando..."
-                # para siempre.
+                # Disparador real: lanza el .bat desacoplado y cierra la app
                 import subprocess, os
                 bat_path = bat["bat_ruta"]
                 # El entorno de un proceso PyInstaller congelado lleva marcas
@@ -205,48 +351,11 @@ def actualizar():
         return jsonify(ok=True, fase="descargando", progreso=0), 202
 
 
-def _exe_actual() -> str:
-    """Ruta del .exe en ejecución (sys.executable dentro del bundle PyInstaller;
-    en dev es el python.exe)."""
-    import sys
-    return sys.executable
-
-
 @bp_desktop.get("/api/shell/actualizar/progreso")
 def progreso_actualizar():
     with _LOCK_UPDATE:
         est = dict(_ESTADO_UPDATE)
     return jsonify(ok=True, **est)
-
-
-@bp_desktop.get("/api/opencode/estado")
-def opencode_estado():
-    """Diagnóstico honesto del motor BYOK local (M-059).
-
-    El doctor nunca ve una consola (pywebview no la tiene): este endpoint es
-    el único lugar donde puede enterarse de por qué su chat con OpenCode no
-    responde. No requiere que el proceso esté vivo — si nunca arrancó, o si
-    el módulo no se pudo importar, igual responde 200 con un motivo estable
-    en vez de un 500 críptico.
-    """
-    try:
-        from core_desktop.opencode_server import get_server_manager
-    except ImportError:
-        from .core_desktop.opencode_server import get_server_manager
-    try:
-        return jsonify(get_server_manager().estado())
-    except Exception as exc:               # noqa: BLE001 — diagnóstico, nunca un 500
-        return jsonify(disponible=False, motivo="error_interno",
-                       reintentos=0, fallo_persistente=False, detalle=str(exc)[:200])
-
-
-@bp_desktop.get("/api/shell/contrato")
-def contrato():
-    try:
-        from .core_desktop.cliente_llm import contrato_inference
-    except ImportError:
-        from core_desktop.cliente_llm import contrato_inference
-    return jsonify(contrato_inference())
 
 
 @bp_desktop.post("/api/shell/conversar")
@@ -263,6 +372,13 @@ def conversar():
     max_pesos = payload.get("max_pesos")
     plan = payload.get("plan") or None
     token_plan = (payload.get("token_plan") or "").strip() or None
+    # M-063 · wizard de preguntas: el frontend cuenta cuántas ya se hicieron
+    # en esta conversación y las reenvía turno a turno (el server no guarda
+    # estado entre requests). Fail-closed ante basura: 0.
+    try:
+        preguntas_hechas = max(0, int(payload.get("preguntas_hechas") or 0))
+    except (TypeError, ValueError):
+        preguntas_hechas = 0
 
     if rol not in _ROLES:
         return jsonify(error="rol_invalido", roles_aceptados=list(_ROLES),
@@ -277,7 +393,8 @@ def conversar():
                                           paradigma=paradigma,
                                           max_pesos=max_pesos,
                                           plan=plan,
-                                          token_plan=token_plan)
+                                          token_plan=token_plan,
+                                          preguntas_hechas=preguntas_hechas)
         return jsonify(rol=rol, resultado=resultado)
     except Exception as exc:               # noqa: BLE001
         return jsonify(error="runner_fallo", detalle=str(exc),

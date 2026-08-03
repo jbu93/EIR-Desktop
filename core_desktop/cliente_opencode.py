@@ -30,11 +30,8 @@ from core_desktop.cliente_llm import _MockResponse, _MockMessage  # reusa la for
 from core_desktop.model_catalog import (
     Tier, Modo, Preferencia,
     resolver_modelo, resolver_tts,
-    obtener_info_modelo
+    obtener_info_modelo, listar_modelos_disponibles,
 )
-# Nota (build público): calcular_costo_usd/PROVIDER_COSTS viven solo en el
-# backend privado (facturación real) — este adapter nunca los necesitó, era
-# un import muerto que arrastraba el nombre sin usarlo.
 
 
 # ─── Kill-switch (L10): leído en tiempo de llamada ────────────────────
@@ -59,6 +56,27 @@ def establecer_modo_inferencia(modo: str) -> None:
 def modo_inferencia_actual() -> str:
     """Para que el endpoint de estado sea honesto sobre qué eligió el doctor."""
     return _MODO_INFERENCIA_SESION or "cloud"
+
+
+# ─── 2026-08-03 · selector de modelo del sidebar (mismo patrón de switch
+# de sesión que _MODO_INFERENCIA_SESION) ───────────────────────────────
+_MODELO_ELEGIDO_SESION: str | None = None  # None = "auto" (deja decidir a resolver_modelo)
+
+
+def establecer_modelo(modelo_id: str | None) -> None:
+    """Fija el modelo elegido explícitamente por el doctor en el selector
+    del sidebar. Un valor vacío/None vuelve a "auto" (deja decidir al
+    catálogo por tier+paradigma). No valida contra el catálogo aquí —
+    `resolver_cliente()` es quien decide en tiempo de llamada si el modelo
+    guardado sigue siendo válido para el tier real de la sesión (fail-closed:
+    si ya no aplica, cae a auto en vez de forzar un modelo fuera de tier)."""
+    global _MODELO_ELEGIDO_SESION
+    _MODELO_ELEGIDO_SESION = (modelo_id or "").strip() or None
+
+
+def modelo_elegido_actual() -> str:
+    """Para que el frontend sepa qué mostrar como seleccionado."""
+    return _MODELO_ELEGIDO_SESION or "auto"
 
 
 def _switch_activo() -> bool:
@@ -90,8 +108,9 @@ def _tier_permite_cloud() -> bool:
     """D098 · revierte D085: TODOS los tiers reales usan Cloud, incluido FREEMIUM.
 
     El tier ya NO decide si hay inferencia real — decide solo el volumen. El
-    freno de FREEMIUM es el límite diario (TIER_LIMITES[FREEMIUM]["consultas_dia"]
-    = 15, exigido en routes_inference.py vía core.metered_billing, NO aquí).
+    freno de FREEMIUM es el límite diario de su tier (exigido en
+    routes_inference.py vía core.metered_billing, NO aquí — la cifra exacta
+    es un parámetro de negocio del backend cloud, no de este cliente).
     Antes (D085) esta función excluía FREEMIUM por completo: un doctor sin
     plan de pago nunca tocaba inferencia real, sin importar qué instalara.
     Fail-closed se mantiene (L2): si no se puede leer NINGÚN tier de la
@@ -104,7 +123,7 @@ def _tier_permite_cloud() -> bool:
         return False
 
 
-def resolver_cliente(rol: str = "odontologo"):
+def resolver_cliente(rol: str = "odontologo", paradigma: str = "build"):
     """Devuelve el cliente LLM adecuado según los kill-switches (L10) y el
     tier real de la sesión (M-058, revertido por D098).
 
@@ -115,6 +134,14 @@ def resolver_cliente(rol: str = "odontologo"):
     2. EIR_OPENCODE_ENABLED=1  → ClienteOpencode (BYOK local, M-051).
     3. Default → ClienteMockSandbox (offline).
     Llamada en tiempo de ejecución (no a nivel de módulo) — cumple L10.
+
+    `paradigma` (2026-08-03): el mismo valor "plan"/"build" que ya viaja desde
+    el toggle del sidebar hasta `agente_loop.ejecutar(paradigma=...)` — antes
+    llegaba hasta cada runner y se perdía ahí, porque `resolver_cliente()` no
+    lo recibía y siempre resolvía `Modo.BUILD` (línea de abajo). Son dos
+    conceptos con el mismo nombre en español (el `Modo` de model_catalog.py
+    para elegir MODELO, y el `paradigma` que gatea qué tools ve el LLM) que
+    nunca se habían tocado entre sí.
     """
     if _cloud_switch_activo() and _tier_permite_cloud():
         from core_desktop.cliente_cloud import ClienteEirCloud
@@ -136,11 +163,23 @@ def resolver_cliente(rol: str = "odontologo"):
     except Exception:
         tier = Tier.FREEMIUM
     
-    # Modo por defecto: build (para tools/código). El runner puede sobrescribir.
-    modo = Modo.BUILD
-    
+    # El paradigma real (plan/build) decide el Modo de selección de modelo —
+    # ya no queda fijo en BUILD sin importar qué eligió el doctor. Cualquier
+    # valor que no sea "plan" cae a BUILD (fail-safe: build es el default
+    # histórico, L17 — aditivo, no cambia comportamiento previo si no se pasa).
+    modo = Modo.PLAN if paradigma == "plan" else Modo.BUILD
+
+    # Selector de modelo del sidebar (2026-08-03): si el doctor eligió un
+    # modelo explícito Y ese modelo sigue disponible para SU tier real, se
+    # usa tal cual — nunca se confía a ciegas en lo que quedó guardado en
+    # memoria de una sesión anterior con otro tier (fail-closed: si ya no
+    # aplica, cae a "auto" y deja decidir a resolver_modelo() como siempre).
+    modelo_elegido = _MODELO_ELEGIDO_SESION
+    if modelo_elegido and modelo_elegido not in listar_modelos_disponibles(tier, modo):
+        modelo_elegido = None
+
     url = os.getenv("OPENCODE_SERVER_URL", "http://127.0.0.1:4096").rstrip("/")
-    return ClienteOpencode(base_url=url, rol=rol, tier=tier, modo=modo)
+    return ClienteOpencode(base_url=url, rol=rol, tier=tier, modo=modo, modelo=modelo_elegido)
 
 
 def resolver_modelo_tts(tier: Tier) -> str:

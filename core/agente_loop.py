@@ -57,6 +57,10 @@ class Resultado:
     # M-058 · una tool pedida que este loop no ejecuta él mismo (delegada al
     # caller — típicamente el gateway cloud devolviéndosela al desktop).
     tool_call_delegado: dict | None = None
+    # M-063 · fase plan: el modelo pidió aclaración ANTES de presentar el plan.
+    # Texto natural para que el doctor responda en el mismo chat. None = no
+    # hay pregunta pendiente (siguió directo o ya presentó el plan).
+    pregunta_aclaracion: str | None = None
 
     @property
     def exitosos(self) -> list[Paso]:
@@ -239,7 +243,9 @@ def ejecutar(lc, modelo: str, mensaje: str, historial: list, *,
              max_pesos: int | None = None,
              plan: dict | None = None,
              token_plan: str | None = None,
-             tools_delegables: set[str] | None = None) -> Resultado:
+             tools_delegables: set[str] | None = None,
+             preguntas_hechas: int = 0,
+             max_preguntas: int | None = None) -> Resultado:
     """Corre la cadena de herramientas dentro del presupuesto y de la frontera.
 
     `lc` y `ejecutores` son inyectables: el arnés y los tests pasan dobles y así el
@@ -267,6 +273,15 @@ def ejecutar(lc, modelo: str, mensaje: str, historial: list, *,
     herramienta_inexistente, no reintenta) y deja `Resultado.tool_call_delegado`
     con `{tool, args}` para que el caller decida qué hacer. Default None =
     comportamiento histórico intacto (L17).
+
+    `preguntas_hechas`/`max_preguntas` (M-063): en fase plan, cuántas preguntas
+    de aclaración ya se hicieron en ESTA conversación (el caller las cuenta y
+    las reenvía turno a turno — el loop no guarda estado entre llamadas) y el
+    tope antes de forzar `presentar_plan` (default `modo_plan.MAX_PREGUNTAS_DEFAULT`).
+    Bajo el tope, una pregunta corta la fase y queda en
+    `Resultado.pregunta_aclaracion` para que el doctor la responda en el mismo
+    chat. Sobre el tope, se le niega al modelo y se le exige presentar el plan
+    YA, dentro del mismo turno.
     """
     inicio = time.time()
     r = Resultado()
@@ -416,6 +431,40 @@ def ejecutar(lc, modelo: str, mensaje: str, historial: list, *,
             mensajes.append({"role": "user",
                              "content": "El plan no pasó la validación. Corrígelo y "
                                         "preséntalo de nuevo."})
+            continue
+
+        # M-063 · fase plan: el modelo pide aclaración ANTES de presentar el
+        # plan. Con cupo, se PARA aquí (mismo trato que presentar_plan: no pasa
+        # por la frontera, no es una tool real) y la pregunta queda para que el
+        # doctor la responda en el mismo chat. Sin cupo, se le niega DENTRO del
+        # mismo turno y se le exige presentar el plan ya con lo que tiene.
+        if plan_fase and herramienta == _modo_plan().PLAN_TOOL_PREGUNTA:
+            tope_preguntas = (max_preguntas if max_preguntas is not None
+                              else _modo_plan().MAX_PREGUNTAS_DEFAULT)
+            if preguntas_hechas < tope_preguntas:
+                pregunta = _modo_plan().validar_pregunta(argumentos)
+                if pregunta:
+                    r.pregunta_aclaracion = pregunta
+                    r.motivo_fin = "pregunta_aclaracion"
+                    break
+                paso.ok, paso.motivo = False, "pregunta_invalida"
+                r.pasos.append(paso)
+                _auditar(paso)
+                mensajes.append({"role": "assistant",
+                                 "content": "[pregunta_invalida] vino vacía o mal formada"})
+                mensajes.append({"role": "user",
+                                 "content": "La pregunta no llegó bien. Hazla de nuevo, "
+                                            "corta y en texto libre, o presenta el plan "
+                                            "si ya tienes lo suficiente."})
+                continue
+            paso.ok, paso.motivo = False, "tope_preguntas_alcanzado"
+            r.pasos.append(paso)
+            _auditar(paso)
+            mensajes.append({"role": "assistant",
+                             "content": "[tope_preguntas_alcanzado]"})
+            mensajes.append({"role": "user",
+                             "content": "Ya hiciste el máximo de preguntas permitidas. "
+                                        "Presenta el plan ahora con lo que tienes."})
             continue
 
         # ── candado 2 · la frontera se consulta en CADA paso (D048) ──

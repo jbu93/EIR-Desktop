@@ -41,7 +41,17 @@ PESOS_DEFAULT = 10
 # de herramientas: el loop la intercepta en la fase plan, antes de la frontera.
 PLAN_TOOL = "presentar_plan"
 
+# M-063 · tool interna para preguntar antes de presentar el plan (wizard de
+# aclaración). Mismo trato que PLAN_TOOL: solo existe en la fase plan, el loop
+# la intercepta antes de la frontera.
+PLAN_TOOL_PREGUNTA = "preguntar_aclaracion"
+
+# Tope de preguntas de aclaración antes de forzar la presentación del plan —
+# el doctor vino a delegar, no a rendir un interrogatorio sin fin.
+MAX_PREGUNTAS_DEFAULT = 3
+
 _MAX_JUSTIFICACION = 400
+_MAX_PREGUNTA = 400
 
 
 def peso_de_tool(tool: str) -> int | None:
@@ -108,15 +118,58 @@ _ESQUEMA_PLAN_TOOL: dict = {
 }
 
 
+_ESQUEMA_PREGUNTA_TOOL: dict = {
+    "type": "function",
+    "function": {
+        "name": PLAN_TOOL_PREGUNTA,
+        "description": (
+            "Úsala SOLO si falta información para armar un plan razonable (el "
+            "doctor pidió algo ambiguo, p. ej. 'ayúdame con una campaña'). Hace "
+            "UNA pregunta de aclaración, en español y lenguaje natural; el "
+            "doctor la responde escribiendo en el mismo chat, sin comandos. Si "
+            "ya tienes lo suficiente, usa presentar_plan en vez de esta."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "pregunta": {
+                    "type": "string",
+                    "description": "La pregunta de aclaración, una sola, texto libre.",
+                },
+            },
+            "required": ["pregunta"],
+        },
+    },
+}
+
+
 def esquema_plan(tools_schema: list[dict] | None) -> list[dict]:
-    """El catálogo que ve el LLM en la fase plan: solo tools de lectura + la
-    tool interna ``presentar_plan``. Determinista; nada fuera de la matriz."""
+    """El catálogo que ve el LLM en la fase plan: solo tools de lectura + las
+    tools internas ``presentar_plan`` y ``preguntar_aclaracion``. Determinista;
+    nada fuera de la matriz."""
     filtrados = [
         dict(e) for e in (tools_schema or [])
         if es_lectura(e.get("function", {}).get("name", ""))
     ]
     filtrados.append(dict(_ESQUEMA_PLAN_TOOL))
+    filtrados.append(dict(_ESQUEMA_PREGUNTA_TOOL))
     return filtrados
+
+
+def validar_pregunta(argumentos: Any) -> str | None:
+    """Extrae la pregunta de los argumentos de ``preguntar_aclaracion``.
+
+    None si viene vacía, malformada o excede el tope — fail-closed: no se
+    narra basura al doctor."""
+    if not isinstance(argumentos, dict):
+        return None
+    pregunta = argumentos.get("pregunta")
+    if not isinstance(pregunta, str):
+        return None
+    pregunta = pregunta.strip()
+    if not pregunta or len(pregunta) > _MAX_PREGUNTA:
+        return None
+    return pregunta
 
 
 def _validar_args(tool: str, args: dict, sandbox_root) -> str | None:
