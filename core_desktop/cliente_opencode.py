@@ -32,39 +32,86 @@ from core_desktop.model_catalog import (
     resolver_modelo, resolver_tts,
     obtener_info_modelo
 )
+# Nota (build público): calcular_costo_usd/PROVIDER_COSTS viven solo en el
+# backend privado (facturación real) — este adapter nunca los necesitó, era
+# un import muerto que arrastraba el nombre sin usarlo.
 
 
 # ─── Kill-switch (L10): leído en tiempo de llamada ────────────────────
+#
+# D097 · el selector BYOK del sidebar necesita encender esto SIN reiniciar el
+# .exe (el env var solo se lee una vez al arranque del proceso). Este estado
+# en memoria vive por proceso — el desktop es de un solo usuario (L1); si
+# algún día soportara multi-sesión, esto tendría que volverse por-sesión, no
+# global de módulo.
+_MODO_INFERENCIA_SESION: str | None = None  # None | "cloud" | "byok"
+
+
+def establecer_modo_inferencia(modo: str) -> None:
+    """Fija la elección del doctor (selector del sidebar). ``modo`` es
+    'cloud' o 'byok'; cualquier otro valor se ignora (fail-closed: no
+    cambia nada ante un valor que no se reconoce)."""
+    global _MODO_INFERENCIA_SESION
+    if modo in ("cloud", "byok"):
+        _MODO_INFERENCIA_SESION = modo
+
+
+def modo_inferencia_actual() -> str:
+    """Para que el endpoint de estado sea honesto sobre qué eligió el doctor."""
+    return _MODO_INFERENCIA_SESION or "cloud"
+
+
 def _switch_activo() -> bool:
+    # El doctor eligió BYOK explícitamente en esta sesión: enciende sin
+    # esperar a un reinicio del proceso. Si eligió "cloud" o no ha elegido
+    # nada, se respeta el comportamiento histórico (leer el env var, que
+    # nace apagado — L10).
+    if _MODO_INFERENCIA_SESION == "byok":
+        return True
     return os.getenv("EIR_OPENCODE_ENABLED", "0").strip() in ("1", "true", "True", "yes")
 
 
 def _cloud_switch_activo() -> bool:
+    # Simétrico a _switch_activo() (BYOK, arriba): la elección explícita del
+    # doctor en esta sesión manda sobre el env var, en ambas direcciones.
+    # Antes esta función solo leía el env var, así que con
+    # EIR_CLOUD_INFERENCE=1 (default desde el runtime hook, D098) elegir BYOK
+    # en el sidebar no tenía ningún efecto — resolver_cliente() evaluaba cloud
+    # primero y ganaba siempre. Ahora: BYOK explícito apaga cloud; cloud
+    # explícito lo prende sin esperar reinicio; sin elección, cae al env var.
+    if _MODO_INFERENCIA_SESION == "byok":
+        return False
+    if _MODO_INFERENCIA_SESION == "cloud":
+        return True
     return os.getenv("EIR_CLOUD_INFERENCE", "0").strip() in ("1", "true", "True", "yes")
 
 
 def _tier_permite_cloud() -> bool:
-    """M-058 · el tier real de la sesión decide, no el switch a secas.
+    """D098 · revierte D085: TODOS los tiers reales usan Cloud, incluido FREEMIUM.
 
-    BYOK (gratis, con tu propia key) y EIR Cloud (de pago, sin key propia)
-    son mutuamente excluyentes: FREEMIUM jamás consume inferencia cloud
-    gratis aunque EIR_CLOUD_INFERENCE esté encendido — ese switch es la
-    válvula de operaciones (apaga TODO el gateway si hace falta), no una
-    licencia por sí sola. Fail-closed: si no se puede leer el tier, no."""
+    El tier ya NO decide si hay inferencia real — decide solo el volumen. El
+    freno de FREEMIUM es el límite diario (TIER_LIMITES[FREEMIUM]["consultas_dia"]
+    = 15, exigido en routes_inference.py vía core.metered_billing, NO aquí).
+    Antes (D085) esta función excluía FREEMIUM por completo: un doctor sin
+    plan de pago nunca tocaba inferencia real, sin importar qué instalara.
+    Fail-closed se mantiene (L2): si no se puede leer NINGÚN tier de la
+    sesión, no se asume acceso."""
     try:
         from core_desktop import sesion
         tier_str = (sesion.estado() or {}).get("tier", "freemium")
-        return Tier(tier_str.lower()) in (Tier.PAGO, Tier.ULTRA)
+        return Tier(tier_str.lower()) in (Tier.FREEMIUM, Tier.PAGO, Tier.ULTRA)
     except Exception:
         return False
 
 
 def resolver_cliente(rol: str = "odontologo"):
     """Devuelve el cliente LLM adecuado según los kill-switches (L10) y el
-    tier real de la sesión (M-058).
+    tier real de la sesión (M-058, revertido por D098).
 
-    1. EIR_CLOUD_INFERENCE=1 Y tier∈{PAGO,ULTRA} → ClienteEirCloud (M-052).
-       Sin sesión guardada → el cliente responde "inicia sesión" (L2/L5).
+    1. EIR_CLOUD_INFERENCE=1 Y hay tier real de sesión (FREEMIUM/PAGO/ULTRA)
+       → ClienteEirCloud (M-052). Sin sesión guardada → el cliente responde
+       "inicia sesión" (L2/L5). El límite de FREEMIUM es de VOLUMEN (15
+       consultas/día, core.metered_billing en el servidor), no de acceso.
     2. EIR_OPENCODE_ENABLED=1  → ClienteOpencode (BYOK local, M-051).
     3. Default → ClienteMockSandbox (offline).
     Llamada en tiempo de ejecución (no a nivel de módulo) — cumple L10.
