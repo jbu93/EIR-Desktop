@@ -240,7 +240,7 @@ class ClienteOpencode:
             sess = self._post(self.base_url + "/session", {})
             sess_id = sess.get("id") if isinstance(sess, dict) else None
             if not sess_id:
-                return self._respuesta_honesta("motor_no disponible: sesión no creada")
+                return self._respuesta_honesta("motor no disponible: sesión no creada")
         except Exception as exc:
             return self._respuesta_honesta(f"motor no disponible: {exc} (L2)")
 
@@ -280,10 +280,39 @@ class ClienteOpencode:
 
         return self._parsear_respuesta_opencode(resp)
 
+    def _motivo_amigable(self) -> str:
+        """Traduce el estado del OpenCodeServerManager (M-059, ya calcula un
+        motivo estable — opencode_no_instalado / proceso_crasheo /
+        timeout_arranque / fallo_persistente / error_arranque) a un mensaje
+        honesto y accionable en español. NUNCA expone el texto crudo de una
+        excepción de socket (ej. WinError 10061) — mismo principio que
+        ``opencode_server.py::estado()``: nunca None, nunca un traceback."""
+        try:
+            from core_desktop.opencode_server import get_server_manager
+            estado = get_server_manager().estado() or {}
+        except Exception:                     # noqa: BLE001
+            estado = {}
+        motivo = estado.get("motivo")
+        if motivo == "opencode_no_instalado" or not estado.get("disponible", False):
+            return ("OpenCode no está instalado o no está corriendo en este equipo. "
+                    "Instálalo con: npm install -g opencode-ai — o cambia a "
+                    "'Gratis en la nube' en el selector de motor.")
+        if motivo == "proceso_crasheo":
+            return ("El proceso de OpenCode se detuvo inesperadamente. Reinicia "
+                    "EIR DR. Desktop o cambia a 'Gratis en la nube'.")
+        if motivo in ("timeout_arranque", "fallo_persistente", "error_arranque"):
+            return ("OpenCode no logró arrancar correctamente. Revisa la instalación "
+                    "o cambia a 'Gratis en la nube'.")
+        return "El motor local de OpenCode no respondió. Intenta de nuevo o cambia a 'Gratis en la nube'."
+
     def _respuesta_honesta(self, motivo: str) -> _MockResponse:
-        """Fail-closed honesto (L2/L4): NO finge contenido del LLM."""
+        """Fail-closed honesto (L2/L4): NO finge contenido del LLM. `motivo`
+        (el diagnóstico técnico, puede llevar el texto crudo de una excepción)
+        queda SOLO en el log — el mensaje visible nunca lo repite."""
+        import logging
+        logging.getLogger("eir_desktop.cliente_opencode").warning("BYOK falló: %s", motivo)
         return _MockResponse({
-            "content": f"[EIR · motor offline] {motivo}",
+            "content": f"[EIR · motor offline] {self._motivo_amigable()}",
             "tool_calls": None,
         })
 

@@ -508,6 +508,53 @@
     if (viewport) viewport.scrollTop = viewport.scrollHeight;
   }
 
+  // D106 · motor de notificaciones ligero (toast), equivalente al eirNotify()
+  // de la web (static/js/eir_notify.js) — el desktop no comparte bundle con
+  // la web, así que se duplica el patrón visual, no el archivo. Mismos
+  // colores que ya usa el resto del desktop (#154212 primario, #ba1a1a error).
+  const NOTIFY_COLOR = { info: '#3b82f6', success: '#154212', warning: '#8a6d00', error: '#ba1a1a' };
+  const NOTIFY_AUTO_MS = { info: 4000, success: 3200, warning: 0, error: 0 };
+
+  function notifyStack() {
+    let stack = document.getElementById('eir-notify-stack');
+    if (!stack) {
+      stack = document.createElement('div');
+      stack.id = 'eir-notify-stack';
+      stack.setAttribute('aria-live', 'polite');
+      stack.style.cssText = 'position:fixed;right:16px;bottom:16px;z-index:9999;'
+        + 'display:flex;flex-direction:column;gap:8px;max-width:320px;';
+      document.body.appendChild(stack);
+    }
+    return stack;
+  }
+
+  function eirNotifyDesktop(mensaje, opciones) {
+    const opts = opciones || {};
+    const severidad = NOTIFY_COLOR[opts.severity] ? opts.severity : 'info';
+    const duracion = opts.duration !== undefined ? opts.duration : NOTIFY_AUTO_MS[severidad];
+
+    const toast = document.createElement('div');
+    toast.style.cssText = 'background:#ffffff;color:#1a1c18;border-left:3px solid '
+      + NOTIFY_COLOR[severidad] + ';border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,.16);'
+      + 'padding:10px 14px;font-size:13px;display:flex;align-items:flex-start;gap:10px;';
+    const texto = document.createElement('span');
+    texto.style.cssText = 'flex:1;line-height:1.4;';
+    texto.textContent = mensaje;
+    const cerrar = document.createElement('button');
+    cerrar.type = 'button';
+    cerrar.textContent = '✕';
+    cerrar.setAttribute('aria-label', 'Cerrar notificación');
+    cerrar.style.cssText = 'background:none;border:none;color:#71796b;cursor:pointer;font-size:12px;padding:0;';
+    const quitar = () => { if (toast.parentNode) toast.parentNode.removeChild(toast); };
+    cerrar.addEventListener('click', quitar);
+    toast.appendChild(texto);
+    toast.appendChild(cerrar);
+    notifyStack().appendChild(toast);
+    if (duracion > 0) setTimeout(quitar, duracion);
+    return toast;
+  }
+  window.eirNotifyDesktop = eirNotifyDesktop;
+
   /**
    * @param {string} rol
    * @param {string} mensaje

@@ -18,9 +18,10 @@ AppSupportURL={#MyAppURL}
 AppUpdatesURL={#MyAppURL}
 DefaultDirName={autopf}\{#MyAppName}
 DisableProgramGroupPage=yes
-LicenseFile=LICENSE
-OutputDir=dist
+LicenseFile=..\LICENSE
+OutputDir=..\dist
 OutputBaseFilename=EIR_DR_Desktop_Setup_x64
+SetupIconFile=static_desktop\img\eir_orb_oficial.ico
 Compression=lzma
 SolidCompression=yes
 WizardStyle=modern
@@ -28,14 +29,15 @@ PrivilegesRequired=lowest
 ArchitecturesInstallIn64BitMode=x64
 
 [Files]
-Source: "dist\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\dist\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
+Source: "static_desktop\img\eir_orb_oficial.ico"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
-Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
-Name: "{commondesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
+Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\eir_orb_oficial.ico"
+Name: "{commondesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\eir_orb_oficial.ico"; Tasks: desktopicon
 
 [Tasks]
-Name: "desktopicon"; Description: "Crear acceso directo en el Escritorio"; GroupDescription: "Iconos adicionales:"; Flags: unchecked
+Name: "desktopicon"; Description: "Crear acceso directo en el Escritorio"; GroupDescription: "Iconos adicionales:"
 
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "Ejecutar EIR DR. Desktop"; Flags: nowait postinstall skipifsilent

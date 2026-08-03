@@ -299,9 +299,58 @@ def test_fail_closed_opencode_caido(monkeypatch):
                                   model="groq/llama-3.1-8b-instant")
     # debe devolver una respuesta honesta de error, NO lanzar, NO fingir contenido
     contenido = getattr(r.choices[0].message, "content", "") if hasattr(r, "choices") else ""
-    assert contenido and ("no disp" in contenido.lower() or "no disponible" in contenido.lower() or "error" in contenido.lower()), (
+    assert contenido and ("no está instalado" in contenido.lower() or "no disponible" in contenido.lower()
+                          or "no logró arrancar" in contenido.lower() or "no respondió" in contenido.lower()), (
         f"con opencode caído el adapter debe responder honesto, no lanzar ni fingir (L2). Recibido: {contenido!r}"
     )
+
+
+# ─── mensaje honesto (bug reportado): nunca la excepción cruda de socket ──
+def test_mensaje_visible_nunca_expone_la_excepcion_cruda(monkeypatch):
+    """Bug real reportado: el chat mostraba `[EIR · motor offline] motor no
+    disponible: <urlopen error [WinError 10061] ...> (L2)` — la excepción
+    cruda del socket, en vez de un mensaje honesto y accionable."""
+    from core_desktop.cliente_opencode import ClienteOpencode
+    c = ClienteOpencode(base_url="http://127.0.0.1:4199", modelo="groq/llama-3.1-8b-instant")
+
+    def _post_malo(url, payload):
+        raise ConnectionRefusedError(
+            "<urlopen error [WinError 10061] No se puede establecer una conexión "
+            "ya que el equipo de destino denegó expresamente dicha conexión>"
+        )
+
+    c._post = _post_malo
+    r = c.chat.completions.create(messages=[{"role": "user", "content": "test"}],
+                                  model="groq/llama-3.1-8b-instant")
+    contenido = getattr(r.choices[0].message, "content", "")
+    bajo = contenido.lower()
+    assert "winerror" not in bajo
+    assert "urlopen" not in bajo
+    assert "10061" not in bajo
+
+
+def test_mensaje_sin_opencode_instalado_da_instrucciones(monkeypatch):
+    """Cuando el motivo real es `opencode_no_instalado` (M-059 ya lo detecta),
+    el mensaje visible debe decir cómo instalarlo y ofrecer la alternativa
+    cloud — no solo declarar el fallo."""
+    from core_desktop import cliente_opencode as CO
+    from core_desktop.cliente_opencode import ClienteOpencode
+
+    class _ManagerFalso:
+        def estado(self):
+            return {"disponible": False, "motivo": "opencode_no_instalado",
+                    "reintentos": 0, "fallo_persistente": False}
+
+    monkeypatch.setattr(
+        "core_desktop.opencode_server.get_server_manager", lambda: _ManagerFalso()
+    )
+    c = ClienteOpencode(base_url="http://127.0.0.1:4199", modelo="groq/llama-3.1-8b-instant")
+    c._post = lambda url, payload: (_ for _ in ()).throw(ConnectionRefusedError("x"))
+    r = c.chat.completions.create(messages=[{"role": "user", "content": "test"}],
+                                  model="groq/llama-3.1-8b-instant")
+    contenido = getattr(r.choices[0].message, "content", "")
+    assert "npm install -g opencode-ai" in contenido
+    assert "Gratis en la nube" in contenido
 
 
 # ─── G6 · routing Plan/Build por modo ──────────────────────────────────

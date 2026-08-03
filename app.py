@@ -10,7 +10,7 @@ Mitigacion de fail-closed silencioso (riesgo #2 del doc 08):
   no carga, todas las tools quedarian denegadas en el loop real.
 
 Incluye gestión automática del servidor OpenCode (opencode serve) como
-dependencia de inferencia LLM (BYOK).
+dependencia de inferencia LLM.
 """
 from __future__ import annotations
 
@@ -42,8 +42,8 @@ def _crear_app():
                 static_folder=str(STATIC_DIR),
                 static_url_path="/static_desktop")
 
-    # Importa bp_desktop: como paquete (python -m routes_desktop) o
-    # como script directo (python app.py).
+    # Importa bp_desktop: como paquete (python -m eir_desktop_v1.app) o
+    # como script directo (python eir_desktop_v1/app.py).
     try:
         from .routes_desktop import bp_desktop
     except ImportError:
@@ -86,7 +86,7 @@ def _loguear_autonomia(app) -> None:
 def _arrancar_opencode_server(app) -> bool:
     """Arranca el servidor OpenCode (opencode serve) y lo registra para apagado."""
     log = logging.getLogger("eir_desktop")
-
+    
     try:
         from core_desktop.opencode_server import iniciar_opencode_server, detener_opencode_server
     except ImportError as e:
@@ -98,14 +98,16 @@ def _arrancar_opencode_server(app) -> bool:
         log.error("No se pudo arrancar el servidor OpenCode. Verifica que 'opencode' esté instalado (npm install -g opencode-ai).")
         return False
 
+    # Registrar apagado al salir
     atexit.register(detener_opencode_server)
-
+    
+    # También registrar handler para señales de terminación
     import signal
     def _signal_handler(signum, frame):
         log.info("Señal %s recibida, deteniendo OpenCode server...", signum)
         detener_opencode_server()
         sys.exit(0)
-
+    
     signal.signal(signal.SIGTERM, _signal_handler)
     signal.signal(signal.SIGINT, _signal_handler)
 
@@ -129,6 +131,7 @@ def _arrancar_pywebview(app) -> int:
         f"http://{HOST}:{PORT}/",
         width=960, height=680,
         min_size=(720, 540),
+        text_select=True,  # permite seleccionar/copiar texto del chat (bug reportado)
     )
     webview.start()
     return 0
@@ -146,10 +149,11 @@ def main() -> int:
     log.info("arrancando sandbox EIR Desktop v1 en %s:%d", HOST, PORT)
     app = _crear_app()
     _loguear_autonomia(app)
-
+    
+    # Arrancar servidor OpenCode (dependencia para inferencia LLM)
     if not _arrancar_opencode_server(app):
         log.warning("Continuando SIN servidor OpenCode (modo offline/mock)")
-
+    
     log.info("routes: / · /health · /api/shell/conversar · /api/shell/roles · /api/shell/contrato")
     return _arrancar_pywebview(app)
 
