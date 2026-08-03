@@ -8,7 +8,7 @@ pero como esqueleto, no como tool activa.
 """
 from __future__ import annotations
 
-from .cable_local import construir_ejecutores, construir_tools_schema
+from .cable_local import construir_ejecutores, construir_tools_schema, resolver_texto_final
 from .cliente_opencode import resolver_cliente
 from .plugin_registry import poblar_registro_completo
 
@@ -49,15 +49,20 @@ def ejecutar_local(mensaje: str, historial: list | None = None,
         max_pasos=2, max_segundos=12.0,
     )
     # M-052 · cliente cloud: el backend ya narró la respuesta → se expone tal cual
+    # D097 · para el resto, si el LLM no pidió ninguna tool, se pide el texto
+    # conversacional real en vez de exponer el resumen técnico interno.
     traza_cloud = getattr(lc, "ultima_traza", None)
-    texto_final = getattr(lc, "ultimo_texto_final", None)
+    resumen = resolver_texto_final(
+        lc, r, modelo="mock-laboratorio", sistema=SISTEMA_LABORATORIO,
+        historial=historial, mensaje=mensaje,
+    )
     credito = getattr(lc, "ultimo_credito", None)
     out = {
         "pasos": traza_cloud if traza_cloud else [
             {"n": p.n, "herramienta": p.herramienta, "ok": p.ok,
              "resumen": p.resumen, "motivo": p.motivo} for p in r.pasos],
         "tope_alcanzado": r.tope_alcanzado, "motivo_fin": r.motivo_fin,
-        "segundos": r.segundos, "resumen": texto_final or r.resumen_para_narrar(),
+        "segundos": r.segundos, "resumen": resumen,
         "aprobacion_pendiente": r.aprobacion_pendiente,
         "plan": r.plan,
         "peso_total": r.peso_total,

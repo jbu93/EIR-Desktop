@@ -16,6 +16,15 @@ Este módulo construye el cable:
     LLM: los del web (intactos) + las tools locales registradas y declaradas en
     la matriz de autonomía. Determinista (ordenado) y fail-closed: nada fuera de
     ``data/autonomia_zonas.json`` se ofrece jamás.
+  · ``resolver_texto_final()``   → decide qué texto ve el doctor al final del
+    turno (D097). Sin esto, los 4 runners del desktop siempre mostraban
+    ``Resultado.resumen_para_narrar()`` — un resumen técnico interno ("[tool] NO
+    DISPONIBLE...") — salvo con el gateway cloud de pago (M-052), que es el
+    único cliente que deja ``ultimo_texto_final`` seteado. Porta al desktop el
+    mismo patrón que ya usa en producción ``routes_inference.py:229-249``: si el
+    LLM no pidió ninguna herramienta, se le pide el texto conversacional real en
+    una llamada aparte, en vez de fingir que "no se ejecutó nada" fue la
+    respuesta.
 
 Reglas del harness que este cable respeta sin duplicar (L17: aditivo, no toca
 nada existente):
@@ -131,3 +140,58 @@ def construir_tools_schema() -> list[dict]:
             },
         })
     return web + locales
+
+
+def resolver_texto_final(lc, resultado, *, modelo: str, sistema: str,
+                          historial: list, mensaje: str) -> str:
+    """Decide el texto final visible al doctor (D097).
+
+    Porta tal cual el patrón ya probado en producción
+    (``routes_inference.py:229-249``, ruta real ``/api/v1/inference``): traza
+    no vacía -> narrar lo ejecutado; traza vacía -> pedir al MISMO cliente, con
+    el MISMO mensaje/historial, el texto conversacional real (sin tools). No
+    reconstruye nada nuevo — reutiliza exactamente lo que el runner ya le pasó
+    a ``agente_loop.ejecutar()``.
+
+    Orden de decisión:
+      1. ``ClienteEirCloud`` (M-052) ya decidió todo server-side: si
+         ``lc.ultimo_texto_final`` viene seteado, se usa tal cual — cero
+         cambio de comportamiento del gateway de pago.
+      2. Cliente de ESTILO M-052 (expone el atributo aunque esté en
+         ``None`` -> el gateway cloud falló o erroró): NO se re-consulta.
+         Repetir la llamada sería un segundo golpe HTTP y, peor, un segundo
+         cobro de crédito por el mismo turno (``routes_inference.py`` ya
+         descuenta cuota por request). Se narra la traza que haya quedado.
+      3. Cliente sin ese atributo (mock, OpenCode, futuros BYOK) y traza NO
+         vacía: se narra lo ejecutado — sin cambios respecto a hoy.
+      4. Cliente sin ese atributo y traza VACÍA: el LLM no pidió ninguna
+         tool -> se le pide el texto conversacional real en una llamada
+         adicional sin tools. Si falla, mensaje honesto (mismo wording que
+         ``routes_inference.py``).
+    """
+    texto_cloud = getattr(lc, "ultimo_texto_final", None)
+    if texto_cloud is not None:
+        return texto_cloud
+    if hasattr(lc, "ultimo_texto_final"):
+        return resultado.resumen_para_narrar()
+    if resultado.pasos:
+        texto = resultado.resumen_para_narrar()
+        if resultado.tope_alcanzado:
+            texto += ("\n[AVISO] se alcanzó el tope de pasos; la respuesta "
+                      "puede estar incompleta y así debe declararse.")
+        return texto
+    try:
+        resp = lc.chat.completions.create(
+            model=modelo,
+            messages=[
+                {"role": "system", "content": sistema},
+                *historial,
+                {"role": "user", "content": mensaje},
+            ],
+            tools=[],
+        )
+        return resp.choices[0].message.content or resultado.resumen_para_narrar()
+    except Exception as e:                      # noqa: BLE001 — motor caído, respuesta honesta
+        print(f"[cable_local] texto_final falló: {type(e).__name__}: {e}")
+        return ("[EIR · motor offline] No pude obtener una respuesta ahora. "
+                "Inténtalo en unos segundos.")
